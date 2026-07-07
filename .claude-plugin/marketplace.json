@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "mone-review",
+  "description": "M-One code-review tooling for Claude Code.",
+  "owner": {
+    "name": "M-One"
+  },
+  "plugins": [
+    {
+      "name": "mone-review",
+      "description": "/review-pr panel review + self-improving per-repo review memory.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}
