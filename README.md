@@ -42,8 +42,12 @@ install; standalone users run `distill` by hand — see below.)
 ## Prerequisites
 
 - **gh** CLI authenticated (or **glab** for GitLab).
-- **graphify** (optional) — adds a semantic recall layer over the memory corpus.
-  Without it, deterministic JSONL recall still works.
+- **graphify** — adds a semantic recall layer over the memory corpus. The
+  installer (and, for marketplace installs, a one-time background step on first
+  session) **auto-installs it** best-effort via uv / pipx / pip. If it can't be
+  installed on a given machine, deterministic JSONL recall still works — nothing
+  breaks. Marker file `~/.claude/.mone-review-graphify-checked` stops retries;
+  delete it (or run `scripts/ensure-graphify.sh --force`) to retry.
 
 ## Why per-repo memory (not shared)
 

@@ -95,7 +95,7 @@ def latest_by_signature(decisions):
 
 
 def has_graphify():
-    return shutil.which('graphify') is not None and shutil.which('node') is not None
+    return shutil.which('graphify') is not None
 
 
 # --------------------------------------------------------------------------- #
@@ -317,7 +317,7 @@ def cmd_record(root, args):
         except Exception as ex:
             print(f"graphify update skipped: {ex}")
     else:
-        print("graphify/node not found — JSONL recall still works, semantic recall disabled")
+        print("graphify not found — JSONL recall still works, semantic recall disabled")
 
 
 # --------------------------------------------------------------------------- #

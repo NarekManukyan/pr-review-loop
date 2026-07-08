@@ -26,6 +26,14 @@ MEM="$DEST/scripts/memory.py"
 [ -f "$MEM" ] || exit 0
 command -v python3 >/dev/null 2>&1 || exit 0
 
+# One-time best-effort graphify install, backgrounded so it NEVER blocks session
+# start. Marker inside the script prevents repeat attempts. Optional — JSONL
+# recall works without it.
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -x "${CLAUDE_PLUGIN_ROOT}/scripts/ensure-graphify.sh" ] \
+   && [ ! -f "$HOME/.claude/.mone-review-graphify-checked" ] && ! command -v graphify >/dev/null 2>&1; then
+  nohup bash "${CLAUDE_PLUGIN_ROOT}/scripts/ensure-graphify.sh" >/dev/null 2>&1 &
+fi
+
 # 2. nudge only when this repo has review memory with ripe candidates
 [ -d "./.review-memory" ] || exit 0
 RIPE="$(python3 "$MEM" ripe . 2>/dev/null)"

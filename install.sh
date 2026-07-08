@@ -16,12 +16,15 @@ rm -rf "$HOME/.claude/skills/review-memory.bak"
 [ -d "$HOME/.claude/skills/review-memory" ] && mv "$HOME/.claude/skills/review-memory" "$HOME/.claude/skills/review-memory.bak"
 cp -R "$SRC/skills/review-memory" "$HOME/.claude/skills/review-memory"
 
+echo "Ensuring graphify (optional semantic recall)…"
+bash "$SRC/scripts/ensure-graphify.sh" --force || true
+
 echo
 echo "Done. Restart Claude Code (new session), then run /review-pr <PR_URL>."
 echo
 echo "Prerequisites:"
 echo "  - gh CLI authenticated (or glab for GitLab)"
-echo "  - graphify (optional) for semantic review-memory recall; plain JSONL recall works without it"
+echo "  - graphify: auto-installed above if possible; JSONL recall works even if it isn't"
 echo
 echo "Auto-improvement: after each review the panel records findings + how you"
 echo "responded into a committed .review-memory/ folder in the repo, and recalls"
