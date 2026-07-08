@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SessionStart hook for the mone-review plugin.
+# SessionStart hook for the pr-review-loop plugin.
 #   1. Ensures the review-memory skill is available at ~/.claude/skills/ so the
 #      /review-pr command's memory.py path resolves (marketplace installs bundle
 #      the skill inside the plugin; the command uses the standard skills path).
@@ -30,7 +30,7 @@ command -v python3 >/dev/null 2>&1 || exit 0
 # start. Marker inside the script prevents repeat attempts. Optional — JSONL
 # recall works without it.
 if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -x "${CLAUDE_PLUGIN_ROOT}/scripts/ensure-graphify.sh" ] \
-   && [ ! -f "$HOME/.claude/.mone-review-graphify-checked" ] && ! command -v graphify >/dev/null 2>&1; then
+   && [ ! -f "$HOME/.claude/.pr-review-loop-graphify-checked" ] && ! command -v graphify >/dev/null 2>&1; then
   nohup bash "${CLAUDE_PLUGIN_ROOT}/scripts/ensure-graphify.sh" >/dev/null 2>&1 &
 fi
 

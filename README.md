@@ -1,4 +1,4 @@
-# mone-review — Claude Code plugin
+# pr-review-loop — Claude Code plugin
 
 `/review-pr` panel review + a **self-improving per-repo review memory**, packaged
 as a one-click Claude Code plugin for the team.
@@ -24,16 +24,16 @@ Claude Code:
 
 ```
 /plugin marketplace add <your-org>/<repo>
-/plugin install mone-review@mone-review
+/plugin install pr-review-loop@pr-review-loop
 ```
 
-Updates later: `/plugin marketplace update mone-review` then reinstall. Everyone
+Updates later: `/plugin marketplace update pr-review-loop` then reinstall. Everyone
 tracks the same version; you ship an improvement once and the team gets it.
 
 ## Install — standalone (no marketplace)
 
 ```bash
-unzip mone-review.zip && ./mone-review/install.sh
+unzip pr-review-loop.zip && ./pr-review-loop/install.sh
 ```
 
 Restart Claude Code. (The SessionStart auto-nudge only runs in the marketplace
@@ -46,7 +46,7 @@ install; standalone users run `distill` by hand — see below.)
   installer (and, for marketplace installs, a one-time background step on first
   session) **auto-installs it** best-effort via uv / pipx / pip. If it can't be
   installed on a given machine, deterministic JSONL recall still works — nothing
-  breaks. Marker file `~/.claude/.mone-review-graphify-checked` stops retries;
+  breaks. Marker file `~/.claude/.pr-review-loop-graphify-checked` stops retries;
   delete it (or run `scripts/ensure-graphify.sh --force`) to retry.
 
 ## Why per-repo memory (not shared)
@@ -70,7 +70,7 @@ there, its `.review-memory/rules.md` bullet can be removed.
 ## Contents
 
 ```
-mone-review/
+pr-review-loop/
 ├── .claude-plugin/
 │   ├── plugin.json         # plugin manifest + SessionStart hook
 │   └── marketplace.json    # makes this repo its own marketplace

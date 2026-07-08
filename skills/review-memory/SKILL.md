@@ -71,7 +71,7 @@ Payload shape:
      "category": "Correctness", "severity": "P1",
      "title": "OTP code never validated",
      "dev_resolution": "deferred",
-     "rationale": "backend handles in MONE-901; gate behind flag",
+     "rationale": "backend handles in PROJ-901; gate behind flag",
      "reviewer": "B", "round": 2}
   ]
 }

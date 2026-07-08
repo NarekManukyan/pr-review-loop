@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Standalone installer for the mone-review plugin (no marketplace needed).
+# Standalone installer for the pr-review-loop plugin (no marketplace needed).
 # Installs the /review-pr command and the review-memory skill into ~/.claude.
 # The one-click path is the Claude Code marketplace (see README); this script is
 # the zip/clone fallback for machines that can't add a marketplace.

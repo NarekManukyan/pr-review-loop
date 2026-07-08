@@ -1,9 +1,9 @@
 {
-  "name": "mone-review",
-  "description": "M-One PR review panel (/review-pr) with per-repo self-improving review memory. 3 senior-engineer reviewer personas, FACT-vs-ASSUMPTION discipline, and a .review-memory/ corpus that learns from developer responses across rounds without ever overriding CLAUDE.md / ADRs.",
+  "name": "pr-review-loop",
+  "description": "PR review panel (/review-pr) with per-repo self-improving review memory. 3 senior-engineer reviewer personas, FACT-vs-ASSUMPTION discipline, and a .review-memory/ corpus that learns from developer responses across rounds without ever overriding CLAUDE.md / ADRs.",
   "version": "1.0.0",
   "author": {
-    "name": "M-One"
+    "name": "NarekManukyan"
   },
   "hooks": {
     "SessionStart": [
