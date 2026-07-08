@@ -86,6 +86,37 @@ Payload shape:
 - Keep the finding `title` consistent across rounds so re-reviews link to the
   original entry.
 
+### Watch items — human carry-forward directives
+
+Distinct from bot findings: a **watch item** is a human saying "this needs
+attention in future reviews" — e.g. complex logic that wasn't traced, a fragile
+area to keep an eye on. It is tagged to a file/area, surfaces at the **top** of
+recall in **every** future review touching that area (across PRs, not just
+rounds), and is **sticky** — it stays open until a human explicitly closes it; it
+does not auto-close just because the bot didn't re-raise it.
+
+Add one:
+
+```bash
+python3 ~/.claude/skills/review-memory/scripts/memory.py note . \
+  --by "<name>" --severity P1 \
+  --area "lib/.../foo_mapper.dart merge sort" \
+  --title "Merge/sort logic not fully verified" \
+  --text "Trace ordering + tz handling in any PR touching this mapper."
+```
+
+Close it once checked:
+
+```bash
+python3 ~/.claude/skills/review-memory/scripts/memory.py close . \
+  --signature "<sig from recall>" --resolution clarified --note "traced, OK"
+```
+
+Review skills must treat recalled watch items as **must-inspect this round** and
+report on them, not skip them. When a human leaves a carry-forward comment in a
+PR/Slack thread ("this complex logic wasn't checked — verify next time"), record
+it as a watch item, not a finding.
+
 ### Distill — periodic, human-gated
 
 ```bash

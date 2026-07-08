@@ -146,6 +146,53 @@ def cmd_init(root, _args):
 
 
 # --------------------------------------------------------------------------- #
+def cmd_note(root, args):
+    """Add a sticky human WATCH ITEM — a carry-forward directive for reviewers.
+
+    Unlike a bot finding, a watch item is authored by a human ("this complex
+    logic wasn't verified — check it in future PRs"), tagged to a file/area, and
+    surfaces in EVERY future review touching that area until someone closes it
+    (record/note the same signature with a non-open resolution). It never
+    auto-closes just because the bot didn't re-raise it.
+    """
+    d = mem_dir(root)
+    if not os.path.isdir(d):
+        cmd_init(root, args)
+    file_ = args.file or (args.area.split()[0] if args.area else '')
+    rec = {
+        'kind': 'watch',
+        'by': args.by,
+        'date': args.date or '',
+        'area': args.area,
+        'file': file_,
+        'line': args.line,
+        'severity': args.severity,
+        'title': args.title or (args.text[:60] if args.text else 'watch item'),
+        'text': args.text,
+        'dev_resolution': 'open',
+        'reviewer': 'human',
+    }
+    if not rec.get('signature'):
+        rec['signature'] = 'watch/' + slug(rec['title'], 8) + '|' + slug(os.path.basename(file_), 3)
+    with open(os.path.join(d, DEC), 'a', encoding='utf-8') as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + '\n')
+    print(f"watch item added ({rec['signature']}). It will surface in every future "
+          f"review whose --area matches, until closed.")
+
+
+def cmd_close(root, args):
+    """Mark a watch item (or finding) checked — record a closing entry."""
+    d = mem_dir(root)
+    rec = {'kind': 'watch', 'signature': args.signature, 'date': args.date or '',
+           'by': args.by, 'dev_resolution': args.resolution,
+           'rationale': args.note or 'checked', 'reviewer': 'human',
+           'title': args.signature}
+    with open(os.path.join(d, DEC), 'a', encoding='utf-8') as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + '\n')
+    print(f"closed {args.signature} as {args.resolution}")
+
+
+# --------------------------------------------------------------------------- #
 def cmd_recall(root, args):
     d = mem_dir(root)
     if not os.path.isdir(d):
@@ -171,13 +218,27 @@ def cmd_recall(root, args):
     def relevant(e):
         if not tokens:
             return True
-        hay = f"{e.get('file','')} {e.get('signature','')} {e.get('title','')}".lower()
+        hay = f"{e.get('file','')} {e.get('area','')} {e.get('signature','')} {e.get('title','')} {e.get('text','')}".lower()
         return any(t in hay for t in tokens)
 
+    # Sticky human watch items — surface FIRST, always, until explicitly closed.
+    watch = [e for e in latest.values()
+             if e.get('kind') == 'watch' and e.get('dev_resolution') == 'open' and relevant(e)]
     suppress = [e for e in latest.values()
-                if e.get('dev_resolution') in SUPPRESS and relevant(e)]
+                if e.get('kind') != 'watch' and e.get('dev_resolution') in SUPPRESS and relevant(e)]
     verify = [e for e in latest.values()
-              if e.get('dev_resolution') in VERIFY and relevant(e)]
+              if e.get('kind') != 'watch' and e.get('dev_resolution') in VERIFY and relevant(e)]
+
+    if watch:
+        print("=== ⚠ CARRY-FORWARD WATCH ITEMS — a human flagged these; inspect this round ===")
+        for e in watch:
+            loc = e.get('file', '') + (f":{e['line']}" if e.get('line') else '')
+            by = e.get('by') or 'reviewer'
+            print(f"- [{e.get('severity','')}] {e.get('title','')} ({loc}) — flagged by {by}")
+            if e.get('text'):
+                print(f"    {e['text']}")
+            print(f"    (still open; close with: memory.py close . --signature '{e.get('signature')}' --resolution clarified)")
+        print()
 
     def fmt(e):
         loc = e.get('file', '')
@@ -204,8 +265,8 @@ def cmd_recall(root, args):
         if len(verify) > mx:
             print(f"  … {len(verify)-mx} more")
         print()
-    if not suppress and not verify:
-        print("=== No relevant prior decisions for this area. ===")
+    if not watch and not suppress and not verify:
+        print("=== No relevant prior decisions or watch items for this area. ===")
 
     # 3. optional semantic recall via graphify (only if a graph has been built)
     graph = os.path.join(d, 'graphify-out', 'graph.json')
@@ -339,7 +400,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)
-    for name in ('init', 'recall', 'record', 'distill', 'ripe', 'stats'):
+    for name in ('init', 'recall', 'record', 'note', 'close', 'distill', 'ripe', 'stats'):
         p = sub.add_parser(name)
         p.add_argument('root')
         if name == 'recall':
@@ -347,6 +408,22 @@ def main():
             p.add_argument('--max', type=int, default=12)
         if name == 'record':
             p.add_argument('--input', required=True)
+        if name == 'note':
+            p.add_argument('--text', required=True, help='what to watch and why')
+            p.add_argument('--area', default='', help='file path(s) / feature keywords it applies to')
+            p.add_argument('--file', default='')
+            p.add_argument('--line', type=int, default=None)
+            p.add_argument('--title', default='')
+            p.add_argument('--by', default='')
+            p.add_argument('--severity', default='P1')
+            p.add_argument('--date', default='')
+        if name == 'close':
+            p.add_argument('--signature', required=True)
+            p.add_argument('--resolution', default='clarified',
+                           choices=['resolved', 'clarified', 'disputed', 'deferred'])
+            p.add_argument('--note', default='')
+            p.add_argument('--by', default='')
+            p.add_argument('--date', default='')
         if name == 'distill':
             p.add_argument('--min-count', type=int, default=2)
         if name == 'ripe':
@@ -355,6 +432,7 @@ def main():
     args = ap.parse_args()
     root = os.path.abspath(args.root)
     {'init': cmd_init, 'recall': cmd_recall, 'record': cmd_record,
+     'note': cmd_note, 'close': cmd_close,
      'distill': cmd_distill, 'ripe': cmd_ripe, 'stats': cmd_stats}[args.cmd](root, args)
 
 
