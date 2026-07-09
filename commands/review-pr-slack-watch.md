@@ -12,6 +12,20 @@ message are the state machine — no external database:
 - 👀 `eyes` → review in progress
 - ✅ `white_check_mark` / 🔧 `wrench` → reviewed (verdict posted)
 
+**Dry run:** if `$ARGUMENTS` contains `--dry-run`, scan and print the plan (which
+messages would be reviewed / picked up as next rounds) but **review nothing, set no
+reactions, post nothing**. Use it to validate detection on your channel before
+turning the loop on.
+
+**Config:** read per-repo/team settings from review memory (run from the repo the
+PRs belong to):
+```bash
+python3 ~/.claude/skills/review-memory/scripts/memory.py config .
+```
+Use `cycle_cap` as the per-cycle cap, `watch_channel` as the default channel if none
+is passed, and the `reactions` map for the state emojis (falls back to
+eyes / white_check_mark / wrench).
+
 ## Steps
 
 1. **Scan the channel.**

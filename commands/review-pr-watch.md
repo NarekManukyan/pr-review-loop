@@ -16,6 +16,18 @@ fires only when new commits land or a re-request produces a new head. A bare
 re-request with **no new commits is intentionally skipped**: nothing changed to
 review, so re-reviewing the identical head would just repeat the last round.
 
+**Dry run:** if `$ARGUMENTS` contains `--dry-run`, do everything up to step 4 but
+**do not run any review, mark anything, or post** — just print the plan (which PRs
+would be reviewed, at which head, which round). Use it to validate detection before
+turning the loop loose.
+
+**Config:** read per-repo settings (the cycle cap, etc.) from review memory:
+```bash
+python3 ~/.claude/skills/review-memory/scripts/memory.py config . --get cycle_cap
+```
+Use that value as the per-cycle cap (default 3). `memory.py config . --init` writes
+an editable default `.review-memory/config.json`.
+
 ## Steps
 
 1. **Resolve platform + repo.** GitHub → `gh`; GitLab → `glab`. Default to the

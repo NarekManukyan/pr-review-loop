@@ -44,6 +44,21 @@ import argparse, json, os, re, sys, shutil, subprocess
 MEM = '.review-memory'
 DEC = 'decisions.jsonl'
 RULES = 'rules.md'
+CONFIG = 'config.json'
+
+# Per-repo config defaults. Override in .review-memory/config.json (committed).
+CONFIG_DEFAULTS = {
+    'stack': '',                       # e.g. flutter-bloc; '' -> auto-detect
+    'cycle_cap': 3,                    # max PRs a watch cycle handles
+    'watch_channel': '',               # default Slack channel for the watcher
+    'reactions': {                     # Slack state emojis (short names, no colons)
+        'in_review': 'eyes',
+        'approved': 'white_check_mark',
+        'changes': 'wrench',
+    },
+    'generated_globs': [],             # extra generated-file globs to skip (beyond CLAUDE.md)
+    'review_pr_command': '/review-pr', # command the PR watcher drives
+}
 
 # Resolutions that mean "do not re-raise unless the code materially changed".
 SUPPRESS = {'disputed', 'clarified', 'resolved'}
@@ -414,6 +429,90 @@ def cmd_ripe(root, args):
 
 
 # --------------------------------------------------------------------------- #
+def load_config(root):
+    """Config defaults deep-merged with .review-memory/config.json (if present)."""
+    import copy
+    cfg = copy.deepcopy(CONFIG_DEFAULTS)
+    p = os.path.join(mem_dir(root), CONFIG)
+    if os.path.exists(p):
+        try:
+            user = json.load(open(p, encoding='utf-8'))
+            for k, v in user.items():
+                if isinstance(v, dict) and isinstance(cfg.get(k), dict):
+                    cfg[k].update(v)
+                else:
+                    cfg[k] = v
+        except Exception as e:
+            print(f"config.json ignored ({e})", file=sys.stderr)
+    return cfg
+
+
+def cmd_config(root, args):
+    cfg = load_config(root)
+    if args.init:
+        d = mem_dir(root)
+        if not os.path.isdir(d):
+            cmd_init(root, args)
+        p = os.path.join(d, CONFIG)
+        if os.path.exists(p):
+            print(f"config already exists: {p}")
+        else:
+            json.dump(CONFIG_DEFAULTS, open(p, 'w', encoding='utf-8'), indent=2)
+            open(p, 'a').write('\n')
+            print(f"wrote default config -> {p} (edit + commit it)")
+        return
+    if args.get:
+        v = cfg
+        for k in args.get.split('.'):
+            v = v.get(k) if isinstance(v, dict) else None
+        print('' if v is None else (json.dumps(v) if isinstance(v, (dict, list)) else v))
+        return
+    print(json.dumps(cfg, indent=2, ensure_ascii=False))
+
+
+def cmd_health(root, _args):
+    """Review-health report: volume, precision (dispute rate), open debt."""
+    from collections import Counter, defaultdict
+    decisions = load_decisions(root)
+    findings = [d for d in decisions if d.get('kind') not in ('review-run', 'watch')]
+    runs = [d for d in decisions if d.get('kind') == 'review-run']
+    watches = [d for d in decisions if d.get('kind') == 'watch']
+
+    print("=== Review health ===")
+    print(f"review runs recorded: {len(runs)}   findings logged: {len(findings)}")
+    if runs:
+        per_pr = Counter(str(r.get('pr')) for r in runs)
+        print(f"PRs reviewed: {len(per_pr)}   max rounds on one PR: {max(per_pr.values())}")
+
+    latest = latest_by_signature(findings)
+    res = Counter(e.get('dev_resolution', 'open') for e in latest.values())
+    print("\nfinding outcomes (latest per finding):", dict(res))
+
+    # precision proxy: dispute rate per category (disputed / resolved-in-some-way)
+    print("\nprecision by category (lower dispute rate = more trusted):")
+    by_cat = defaultdict(lambda: Counter())
+    for e in latest.values():
+        r = e.get('dev_resolution', 'open')
+        if r != 'open':
+            by_cat[e.get('category', '?')][r] += 1
+    if not by_cat:
+        print("  (no developer responses yet)")
+    for cat, c in sorted(by_cat.items()):
+        total = sum(c.values())
+        disputed = c.get('disputed', 0) + c.get('clarified', 0)
+        rate = round(100 * disputed / total) if total else 0
+        flag = '  <-- often wrong, consider down-weighting' if rate >= 50 and total >= 3 else ''
+        print(f"  {cat}: {disputed}/{total} disputed/withdrawn ({rate}%){flag}")
+
+    # open debt
+    watch_open = sum(1 for w in latest_by_signature(watches).values()
+                     if w.get('dev_resolution') == 'open')
+    deferred_open = sum(1 for e in latest.values() if e.get('dev_resolution') == 'deferred')
+    print(f"\nopen watch items: {watch_open}   deferred-not-closed: {deferred_open}")
+    print("graphify available:", has_graphify())
+
+
+# --------------------------------------------------------------------------- #
 def cmd_stats(root, _args):
     decisions = load_decisions(root)
     from collections import Counter
@@ -430,9 +529,13 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)
     for name in ('init', 'recall', 'record', 'note', 'close',
-                 'mark-reviewed', 'was-reviewed', 'distill', 'ripe', 'stats'):
+                 'mark-reviewed', 'was-reviewed', 'config', 'health',
+                 'distill', 'ripe', 'stats'):
         p = sub.add_parser(name)
         p.add_argument('root')
+        if name == 'config':
+            p.add_argument('--init', action='store_true', help='write a default config.json')
+            p.add_argument('--get', default='', help='print one key (dot-path, e.g. reactions.approved)')
         if name in ('mark-reviewed', 'was-reviewed'):
             p.add_argument('--pr', required=True)
             p.add_argument('--commit', required=True)
@@ -470,6 +573,7 @@ def main():
     {'init': cmd_init, 'recall': cmd_recall, 'record': cmd_record,
      'note': cmd_note, 'close': cmd_close,
      'mark-reviewed': cmd_mark_reviewed, 'was-reviewed': cmd_was_reviewed,
+     'config': cmd_config, 'health': cmd_health,
      'distill': cmd_distill, 'ripe': cmd_ripe, 'stats': cmd_stats}[args.cmd](root, args)
 
 

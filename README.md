@@ -59,6 +59,9 @@ Restart the session. On first start the plugin syncs its skills into
 `~/.claude/skills` and (best-effort, in the background) installs `graphify` for
 semantic recall.
 
+Then verify everything with **`/review-pr-doctor`** — it checks auth, skills, the
+Slack token, graphify and shiki, and tells you exactly what (if anything) to fix.
+
 ### Option B — standalone (no marketplace)
 
 ```bash
@@ -179,6 +182,33 @@ invocation is the standing authorization — but every other guardrail stays.
 > first day to confirm detection and reactions behave before turning it on your main
 > review channel.
 
+**Dry run first.** Validate detection without acting — reports what it *would*
+review and which reactions it'd set, but posts and reviews nothing:
+
+```
+/review-pr-watch --dry-run
+/review-pr-slack-watch #code-review --dry-run
+```
+
+**Per-repo config** (`.review-memory/config.json`, committed) tunes the loop without
+editing skills — the per-cycle cap, default watch channel, state emojis, stack,
+extra generated-file globs:
+
+```bash
+python3 ~/.claude/skills/review-memory/scripts/memory.py config . --init   # writes an editable default
+```
+
+### CI instead of a laptop loop
+
+A local `/loop` is fine to start; the durable production form is a CI job that
+reviews each PR on push. Templates in [`ci/`](ci/):
+
+- `ci/github-pr-review.yml` → copy to `.github/workflows/`, set `ANTHROPIC_API_KEY`.
+- `ci/gitlab-pr-review.yml` → add to `.gitlab-ci.yml`, set `ANTHROPIC_API_KEY`.
+
+Both run `/review-pr` on the PR and can commit `.review-memory/` back so memory
+persists across runs.
+
 ---
 
 ## Review memory
@@ -209,6 +239,14 @@ Every finding must still be provable against the current code.
 | close | `memory.py close . --signature "<sig>"` | marks a watch item checked |
 | distill | `memory.py distill .` | lists recurring findings (candidates to codify) |
 | ripe | `memory.py ripe .` | findings with a consistent verdict, ready to codify (used by the nudge) |
+| health | `memory.py health .` | review-health report: volume, dispute rate per category (precision), open debt |
+| config | `memory.py config . --init` | write/read the per-repo `config.json` |
+
+**Review health.** `memory.py health .` surfaces whether the bot is actually
+helping: findings per round, **dispute rate per category** (if e.g. "performance"
+findings get disputed 60% of the time, you see it and can down-weight that lane),
+open watch items, and deferred-not-closed count. This is also the guard against
+feedback drift — you measure precision instead of trusting suppression blindly.
 
 **Watch items** are the "important, don't forget" channel: flag complex logic that
 wasn't fully verified and it shows at the top of every future review touching that
@@ -303,12 +341,16 @@ pr-review-loop/
 ├── commands/
 │   ├── review-pr.md              # /review-pr
 │   ├── review-pr-watch.md        # /review-pr-watch
-│   └── review-pr-slack-watch.md  # /review-pr-slack-watch
+│   ├── review-pr-slack-watch.md  # /review-pr-slack-watch
+│   └── review-pr-doctor.md       # /review-pr-doctor
 ├── payload/skills/               # synced to ~/.claude/skills on install/first-run
-│   ├── review-memory/            # the learning engine (recall/record/note/distill)
+│   ├── review-memory/            # learning engine (recall/record/note/distill/health/config/doctor)
 │   ├── review-pr-slack/          # panel → HTML report + Slack verdict
 │   └── slack-send/               # msg / report upload / reactions / channel watch
+├── ci/                           # GitHub Actions + GitLab CI templates
 ├── hooks/ensure-and-nudge.sh     # SessionStart: sync skills, install graphify, distill nudge
 ├── scripts/ensure-graphify.sh    # best-effort graphify installer
-└── install.sh                    # standalone (no-marketplace) installer
+├── install.sh                    # standalone (no-marketplace) installer
+├── CHANGELOG.md
+└── README.md
 ```

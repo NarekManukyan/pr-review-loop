@@ -1,0 +1,51 @@
+# pr-review-loop — GitHub Actions template.
+# Runs /review-pr on every PR open/synchronize (each push), the robust production
+# form of /review-pr-watch (a CI job instead of a laptop loop). Copy to
+# .github/workflows/pr-review.yml in the target repo and set the ANTHROPIC_API_KEY
+# secret. Adjust the review command/model to taste.
+name: pr-review-loop
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, review_requested]
+
+permissions:
+  contents: read
+  pull-requests: write   # so /review-pr can post inline comments
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0            # full history so review memory / build agent can diff
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Install the plugin
+        run: |
+          git clone --depth 1 https://github.com/NarekManukyan/pr-review-loop /tmp/prl
+          bash /tmp/prl/install.sh
+
+      - name: Review the PR
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          claude -p "/review-pr ${{ github.event.pull_request.html_url }}" \
+            --dangerously-skip-permissions
+
+      # .review-memory/ is updated by the review — commit it back so the memory
+      # persists across CI runs (optional; requires a token that can push).
+      - name: Persist review memory
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain .review-memory 2>/dev/null)" ]; then
+            git config user.name "pr-review-loop"
+            git config user.email "pr-review-loop@users.noreply.github.com"
+            git add .review-memory
+            git commit -m "chore: update review memory [skip ci]" || true
+            git push || echo "push skipped (no write token)"
+          fi
