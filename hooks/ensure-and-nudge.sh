@@ -33,6 +33,16 @@ if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -x "${CLAUDE_PLUGIN_ROOT}/scripts/ensur
   nohup bash "${CLAUDE_PLUGIN_ROOT}/scripts/ensure-graphify.sh" >/dev/null 2>&1 &
 fi
 
+# 2b. one-time best-effort shiki install (HTML report highlighting), backgrounded.
+# Needed by /review-pr-slack; a marketplace/CLI install has no other install step.
+SHIKI_MARK="$HOME/.claude/.pr-review-loop-shiki-checked"
+SLACK_SCRIPTS="$SKILLS_DEST/review-pr-slack/scripts"
+if [ ! -f "$SHIKI_MARK" ] && command -v npm >/dev/null 2>&1 \
+   && [ -f "$SLACK_SCRIPTS/package.json" ] && [ ! -d "$SLACK_SCRIPTS/node_modules/shiki" ]; then
+  touch "$SHIKI_MARK" 2>/dev/null || true
+  nohup bash -c "cd '$SLACK_SCRIPTS' && npm install --no-fund --no-audit --silent" >/dev/null 2>&1 &
+fi
+
 # 3. nudge only when this repo has review memory with ripe candidates
 [ -f "$MEM" ] || exit 0
 command -v python3 >/dev/null 2>&1 || exit 0

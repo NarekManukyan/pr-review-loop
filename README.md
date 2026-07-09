@@ -46,20 +46,31 @@ continuously.
 
 ## Quick start
 
-### Option A — one-click (marketplace, recommended for teams)
+### Option A — marketplace (recommended)
 
-In Claude Code:
+A real, versioned plugin (`claude plugin update` / `list` / `enable`). Same
+mechanism from the terminal **or** from inside Claude Code — pick either:
 
+```bash
+# terminal (CLI)
+claude plugin marketplace add NarekManukyan/pr-review-loop
+claude plugin install pr-review-loop@pr-review-loop
 ```
+```
+# inside Claude Code (slash commands)
 /plugin marketplace add NarekManukyan/pr-review-loop
 /plugin install pr-review-loop@pr-review-loop
 ```
 
-Restart the session, then run **`/review-pr-init`** — a guided setup that asks
-which PR platform you use (required), whether you want Slack delivery and graphify
-(both optional), and connects them. It ends by running the doctor to confirm.
+Restart the session — the first start syncs the skills and best-effort installs
+`graphify` and `shiki` in the background. Then run **`/review-pr-init`** — a guided
+setup that asks which PR platform you use (required) and whether you want Slack
+delivery and graphify (optional), then connects them and runs the doctor.
 
 `/review-pr-doctor` re-checks setup anytime; nothing has to be done by hand.
+
+Update later: `claude plugin update pr-review-loop` (or `/plugin marketplace update
+pr-review-loop`), then restart.
 
 ### Option B — one line (global, no marketplace)
 
@@ -295,7 +306,10 @@ You ship an improvement once; teammates pull it:
 # maintainer
 cd <plugin checkout> && git add -A && git commit -m "…" && git push
 
-# teammates, in Claude Code
+# teammates — terminal
+claude plugin update pr-review-loop        # then restart Claude Code
+
+# teammates — inside Claude Code
 /plugin marketplace update pr-review-loop
 /plugin install pr-review-loop@pr-review-loop
 ```

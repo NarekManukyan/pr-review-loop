@@ -3,6 +3,18 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.3.1
+
+Added
+- Documented terminal install via the `claude plugin` CLI (`claude plugin
+  marketplace add` / `claude plugin install`) — same result as the `/plugin`
+  slash commands, runnable from a shell.
+
+Fixed
+- SessionStart hook now also best-effort installs `shiki`, so a marketplace / CLI
+  install is fully self-sufficient (HTML report highlighting works without running
+  install.sh).
+
 ## 1.3.0
 
 Added
