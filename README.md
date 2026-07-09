@@ -55,12 +55,11 @@ In Claude Code:
 /plugin install pr-review-loop@pr-review-loop
 ```
 
-Restart the session. On first start the plugin syncs its skills into
-`~/.claude/skills` and (best-effort, in the background) installs `graphify` for
-semantic recall.
+Restart the session, then run **`/review-pr-init`** — a guided setup that asks
+which PR platform you use (required), whether you want Slack delivery and graphify
+(both optional), and connects them. It ends by running the doctor to confirm.
 
-Then verify everything with **`/review-pr-doctor`** — it checks auth, skills, the
-Slack token, graphify and shiki, and tells you exactly what (if anything) to fix.
+`/review-pr-doctor` re-checks setup anytime; nothing has to be done by hand.
 
 ### Option B — standalone (no marketplace)
 
@@ -75,15 +74,15 @@ highlighting) and `graphify` (optional). Restart Claude Code.
 
 ## Slack setup
 
-Only needed for `/review-pr-slack` and the Slack watcher (message, report upload,
-and reactions post **as you**). Connect the sender token once:
+`/review-pr-init` sets this up interactively — you usually don't need to do it by
+hand. It's only needed for `/review-pr-slack` and the Slack watcher (message, report
+upload, and reactions post **as you**); `/review-pr` and local reviews work without it.
 
-```bash
-~/.claude/skills/slack-send/install.sh
-```
-
-Without it, reviews still run locally and `/review-pr` still posts inline — only
-the Slack delivery needs the token.
+Two options `/review-pr-init` offers:
+- **send-slack skill** (recommended) — posts as you, uploads the HTML report, sets
+  reactions. Manual equivalent: `~/.claude/skills/slack-send/install.sh`.
+- **Slack MCP connector** — message-only (no file upload, no reactions); enable it
+  in your claude.ai connector settings.
 
 ---
 
@@ -331,6 +330,7 @@ pr-review-loop/
 │   ├── review-pr.md              # /review-pr
 │   ├── review-pr-watch.md        # /review-pr-watch
 │   ├── review-pr-slack-watch.md  # /review-pr-slack-watch
+│   ├── review-pr-init.md         # /review-pr-init (guided setup)
 │   └── review-pr-doctor.md       # /review-pr-doctor
 ├── payload/skills/               # synced to ~/.claude/skills on install/first-run
 │   ├── review-memory/            # learning engine (recall/record/note/distill/health/config/doctor)

@@ -3,6 +3,13 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.2.0
+
+Added
+- `/review-pr-init` — guided first-time setup. Asks which PR platform you use
+  (required) and whether you want Slack delivery and graphify (optional), then
+  connects them and runs the doctor. No more hand-running installers.
+
 ## 1.1.0
 
 Added

@@ -30,13 +30,14 @@ echo "Ensuring graphify (optional semantic recall)…"
 bash "$SRC/scripts/ensure-graphify.sh" --force || true
 
 echo
-echo "Done. Restart Claude Code (new session)."
+echo "Done. Restart Claude Code (new session), then run /review-pr-init for guided setup."
 echo
 echo "Commands:"
 echo "  /review-pr <PR_URL>                     panel review + review memory (inline, this repo)"
 echo "  /review-pr-watch [owner/repo]           one watch cycle for re-review requests (wrap in /loop)"
 echo "  /review-pr-slack <PR_URLs | slack-msg>  panel review -> HTML report + Slack verdict"
 echo "  /review-pr-slack-watch #channel         one watch cycle (wrap in /loop to run continuously)"
+echo "  /review-pr-init                         guided setup (PR platform required; Slack/graphify optional)"
 echo "  /review-pr-doctor                       check setup (auth, skills, token, graphify, shiki)"
 echo
 echo "Prerequisites:"
