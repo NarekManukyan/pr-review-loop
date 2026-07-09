@@ -3,6 +3,14 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.5.1
+
+Changed
+- Complexity thresholds aligned to Dart Code Metrics defaults (6–8 nesting was too
+  strict). UI widget nesting flags at **> 10** (DCM Widgets Nesting Level ≤ 10);
+  cyclomatic complexity **> 20** = P1 (DCM default); control-flow nesting **> 5**
+  (DCM maximum-nesting-level). Widget depth 6–10 is normal and no longer flagged.
+
 ## 1.5.0
 
 Added
