@@ -20,7 +20,9 @@ import webbrowser
 CLIENT_ID = os.environ.get("CC_CLIENT_ID", "")
 PORT = int(os.environ.get("CC_PORT", "53682"))
 REDIRECT = f"http://localhost:{PORT}/callback"
-USER_SCOPES = "files:write,chat:write,channels:read,groups:read,im:write,users:read"
+USER_SCOPES = ("files:write,chat:write,channels:read,channels:history,"
+               "groups:read,groups:history,im:write,im:history,mpim:history,"
+               "reactions:read,reactions:write,users:read")
 
 AUTHORIZE = "https://slack.com/oauth/v2/authorize?" + urllib.parse.urlencode(
     {"client_id": CLIENT_ID, "user_scope": USER_SCOPES, "redirect_uri": REDIRECT}

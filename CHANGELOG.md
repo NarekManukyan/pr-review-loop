@@ -3,6 +3,14 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.2.1
+
+Fixed
+- slack-send OAuth now requests the read scopes the watcher and reactions need:
+  `channels:history`, `groups:history`, `im:history`, `mpim:history`,
+  `reactions:read`, `reactions:write`. Existing installs must re-run
+  `~/.claude/skills/slack-send/install.sh` (re-auth) to grant them.
+
 ## 1.2.0
 
 Added
