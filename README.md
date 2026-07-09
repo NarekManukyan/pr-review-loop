@@ -61,14 +61,24 @@ which PR platform you use (required), whether you want Slack delivery and graphi
 
 `/review-pr-doctor` re-checks setup anytime; nothing has to be done by hand.
 
-### Option B — standalone (no marketplace)
+### Option B — one line (global, no marketplace)
+
+Installs into `~/.claude` for the current user — available in **every project**.
+Re-run the same line any time to update.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/NarekManukyan/pr-review-loop/main/install-remote.sh | bash
+```
+
+Clones the plugin to `~/.pr-review-loop`, then installs commands + skills, `shiki`,
+and (optionally) `graphify`. Requires `git` + `curl`. Restart Claude Code, then
+`/review-pr-init`.
+
+### Option C — from the zip
 
 ```bash
 unzip pr-review-loop.zip && ./pr-review-loop/install.sh
 ```
-
-This copies the commands + skills into `~/.claude`, installs `shiki` (report
-highlighting) and `graphify` (optional). Restart Claude Code.
 
 ---
 

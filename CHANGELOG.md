@@ -3,6 +3,13 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.3.0
+
+Added
+- One-line global install: `curl -fsSL .../install-remote.sh | bash` clones the
+  plugin to ~/.pr-review-loop and installs into ~/.claude for the user (all
+  projects). Re-run to update.
+
 ## 1.2.1
 
 Fixed
