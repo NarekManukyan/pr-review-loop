@@ -9,6 +9,8 @@ You are orchestrating a code review panel of **3 senior Flutter/Dart engineers**
 - **Reviewer B – Correctness & Edge Cases**: Focuses on logic bugs, null safety, async/await pitfalls, race conditions, and incorrect state transitions.
 - **Reviewer C – Performance & Code Quality**: Focuses on unnecessary rebuilds, expensive widget trees, complexity of algorithms/calculations, readability, and naming.
 
+**Stack adaptation (do this before reviewing).** Detect the repo's stack from its manifest — `pubspec.yaml` → Flutter/Dart, `package.json` → JS/TS (+ framework), `go.mod` → Go, `pyproject.toml`/`requirements.txt` → Python, `*.csproj` → .NET, etc. The three personas and the pattern checklist below are written in their **Flutter/Dart** form; for any other stack keep the same three lenses (architecture · correctness · performance/quality) but apply that stack's idioms and the repo's own `CLAUDE.md` + linter rules instead — e.g. React: hook-deps, memoization, key usage, effect cleanup; Go: error wrapping, goroutine/context leaks, nil deref; Node/backend: N+1 queries, unhandled rejections, input validation, transaction boundaries. The Flutter-specific pattern table applies only to Flutter repos.
+
 ---
 
 ## Instructions
@@ -127,16 +129,23 @@ Only flag a missing regen if there is **direct evidence** the contract was broke
    - **P1** – Significant bug, architectural violation, or serious performance issue. Should fix before merge.
    - **P2** – Code smell, minor inefficiency, readability concern. Fix when convenient.
 
-### Complexity check (thresholds = Dart Code Metrics defaults)
+### Complexity check (auto-adapt to the repo's stack)
 
-Measure the complexity of changed methods and flag against these thresholds. Cite the measured number vs the threshold so it is a FACT, not an opinion:
+Detect the repo's stack and prefer its **own linter thresholds** so the review agrees with the team's tooling; fall back to per-language defaults when there is no config. Always cite the measured value vs the threshold so it is a FACT, not an opinion.
 
-- **UI build methods** (Flutter `build()`, React / Vue / Svelte render / JSX, any widget or component tree): measure **widget/element nesting depth**. DCM's recommended Widgets Nesting Level is **≤ 10**, so depth **> 10** → flag: extract the nested subtrees into named sub-widgets / components; report the measured depth. **P2** normally; **P1** only when it is far over (≈15+) or paired with a very long build method. Widget depth of 6–10 is normal — do not flag it.
-- **All other methods**:
-  - **Cyclomatic complexity > 20** (DCM default) → **P1** "excessive complexity — split into smaller functions." Count the decision points (`if`/`else`, `switch` cases, loops, `&&`/`||`, `?:`, `catch`, early-return guards) and state the number.
-  - **Control-flow nesting depth > 5** (DCM `maximum-nesting-level` default — nested `if`/`for`/`while`, not widget nesting) → flag: flatten with guard clauses / early returns / extraction. **P2**, or **P1** if also over the complexity threshold.
+**Read the repo's thresholds first (use these when present):**
+- Dart / Flutter → `analysis_options.yaml` (DCM `cyclomatic-complexity`, `maximum-nesting-level`, `widgets-nesting-level`)
+- JS / TS → `.eslintrc*` / `eslint.config.*` (`complexity`, `max-depth`)
+- Go → `.golangci.yml` (`gocyclo` / `cyclop`, `nestif`)
+- Python → `setup.cfg` / `.flake8` / `pyproject.toml` (`max-complexity`)
+- .NET / other → the repo's analyzer / editorconfig ruleset
 
-Cite `method + file:line + measured value vs threshold`. Do not flag methods under the thresholds just because they look busy.
+**Defaults when no config is found:**
+- **Cyclomatic complexity > 15–20** (McCabe "high"; DCM & ESLint default 20) → **P1** "excessive complexity — split into smaller functions." Count decision points (`if`/`else`, `switch` cases, loops, `&&`/`||`, `?:`, `catch`, guards) and state the number.
+- **Control-flow nesting depth > 4–5** (ESLint `max-depth` 4, DCM `maximum-nesting-level` 5) → flag; flatten with guard clauses / early returns / extraction. **P2**, or **P1** if also over the complexity threshold.
+- **UI component nesting — frontend/UI code only** (Flutter `build()`, React / Vue / Svelte component trees): depth **> 10** (DCM Widgets Nesting Level ≤ 10) → flag; extract named sub-components. **Backend / data / infra code has no build method — skip this rule there.** Component depth ≤ 10 is normal.
+
+Cite `method + file:line + measured value vs threshold`. Don't flag code under the thresholds just because it looks busy.
 
    Additionally, flag any **complex function or non-trivial calculation** with a dedicated comment explaining what it does and whether the logic is correct.
 

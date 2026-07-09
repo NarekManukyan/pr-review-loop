@@ -3,6 +3,17 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.6.0
+
+Changed
+- Reviewers now **auto-adapt to the repo's stack** instead of assuming Flutter.
+  The panel detects the stack from the repo manifest (pubspec / package.json /
+  go.mod / pyproject / csproj…) and applies that stack's idioms + the repo's own
+  linter/CLAUDE.md. Complexity thresholds prefer the repo's linter config
+  (analysis_options / .eslintrc / .golangci / setup.cfg) and fall back to
+  per-language defaults; the UI component-nesting rule applies to frontend only
+  (backend has no build method).
+
 ## 1.5.1
 
 Changed

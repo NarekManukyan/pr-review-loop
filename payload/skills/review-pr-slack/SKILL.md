@@ -95,22 +95,33 @@ python3 ~/.claude/skills/review-memory/scripts/memory.py note <repo-root> \
   --by "<author>" --area "<file/paths>" --title "<short>" --text "<the concern>"
 ```
 
+### 1c. Detect the stack
+
+Determine the repo's stack from its manifest (`pubspec.yaml` → Flutter/Dart, `package.json` → JS/TS + framework, `go.mod` → Go, `pyproject.toml` → Python, `*.csproj` → .NET…). Use it to fill `<stack>` in the persona prompts and to pick stack-appropriate checks: the three personas keep their lenses (architecture · correctness · performance/quality) but apply the detected stack's idioms + the repo's `CLAUDE.md`/linter — not Flutter's by default. Reviewer D already auto-detects the stack for its compile/analyze step.
+
 ### 2. Run the 4-agent panel
 
 Spawn four agents **in parallel** (Agent tool, `run_in_background: true`):
 
 - **A — Architecture & Patterns**: layering, BLoC/state-management correctness, DI, separation of concerns
 - **B — Correctness & Edge Cases**: logic bugs, null safety, async/races, error handling, hardcoded placeholders
-### Complexity check (thresholds = Dart Code Metrics defaults)
+### Complexity check (auto-adapt to the repo's stack)
 
-Measure the complexity of changed methods and flag against these thresholds. Cite the measured number vs the threshold so it is a FACT, not an opinion:
+Detect the repo's stack and prefer its **own linter thresholds** so the review agrees with the team's tooling; fall back to per-language defaults when there is no config. Always cite the measured value vs the threshold so it is a FACT, not an opinion.
 
-- **UI build methods** (Flutter `build()`, React / Vue / Svelte render / JSX, any widget or component tree): measure **widget/element nesting depth**. DCM's recommended Widgets Nesting Level is **≤ 10**, so depth **> 10** → flag: extract the nested subtrees into named sub-widgets / components; report the measured depth. **P2** normally; **P1** only when it is far over (≈15+) or paired with a very long build method. Widget depth of 6–10 is normal — do not flag it.
-- **All other methods**:
-  - **Cyclomatic complexity > 20** (DCM default) → **P1** "excessive complexity — split into smaller functions." Count the decision points (`if`/`else`, `switch` cases, loops, `&&`/`||`, `?:`, `catch`, early-return guards) and state the number.
-  - **Control-flow nesting depth > 5** (DCM `maximum-nesting-level` default — nested `if`/`for`/`while`, not widget nesting) → flag: flatten with guard clauses / early returns / extraction. **P2**, or **P1** if also over the complexity threshold.
+**Read the repo's thresholds first (use these when present):**
+- Dart / Flutter → `analysis_options.yaml` (DCM `cyclomatic-complexity`, `maximum-nesting-level`, `widgets-nesting-level`)
+- JS / TS → `.eslintrc*` / `eslint.config.*` (`complexity`, `max-depth`)
+- Go → `.golangci.yml` (`gocyclo` / `cyclop`, `nestif`)
+- Python → `setup.cfg` / `.flake8` / `pyproject.toml` (`max-complexity`)
+- .NET / other → the repo's analyzer / editorconfig ruleset
 
-Cite `method + file:line + measured value vs threshold`. Do not flag methods under the thresholds just because they look busy.
+**Defaults when no config is found:**
+- **Cyclomatic complexity > 15–20** (McCabe "high"; DCM & ESLint default 20) → **P1** "excessive complexity — split into smaller functions." Count decision points (`if`/`else`, `switch` cases, loops, `&&`/`||`, `?:`, `catch`, guards) and state the number.
+- **Control-flow nesting depth > 4–5** (ESLint `max-depth` 4, DCM `maximum-nesting-level` 5) → flag; flatten with guard clauses / early returns / extraction. **P2**, or **P1** if also over the complexity threshold.
+- **UI component nesting — frontend/UI code only** (Flutter `build()`, React / Vue / Svelte component trees): depth **> 10** (DCM Widgets Nesting Level ≤ 10) → flag; extract named sub-components. **Backend / data / infra code has no build method — skip this rule there.** Component depth ≤ 10 is normal.
+
+Cite `method + file:line + measured value vs threshold`. Don't flag code under the thresholds just because it looks busy.
 
 - **C — Performance & Code Quality**: rebuilds, per-frame/per-keystroke work, complexity, naming, localization/design-system violations, dead code
 - **D — Build & Analyze**: verifies each open MR actually compiles and passes static analysis. Per MR: fetch the source branch, create an isolated `git worktree` (never touch the user's working tree), install deps and run the stack's compile/analyze step (Flutter: `flutter pub get` + codegen if needed + `dart analyze`; Node: install + `tsc`/build; Go: `go build ./... && go vet`), then remove the worktree. Compile/analyzer **errors** → P0 findings with the tool output quoted; **warning/info counts** → reported per MR for the verdict. Skip already-merged MRs.
