@@ -27,6 +27,15 @@ Rules:
 - Do NOT flag missing codegen/generated files.
 - Line numbers must reference the NEW file version (use the full files in
   mr*-files to get exact line numbers).
+### Complexity check (measure, then flag the worst)
+
+For every non-trivial method/function in the diff, assess complexity and flag the worst offenders. Cite the measurement so it is a FACT, not an opinion:
+
+- **UI build methods** (Flutter `build()`, React / Vue / Svelte render / JSX, any widget or component tree): measure widget/element **nesting depth**. Depth **> 6–8 levels** = an oversized build method → flag it and recommend extracting the nested subtrees into named sub-widgets / components. Report the measured depth. Deeply nested **and** long (≈100+ lines) → **P1**; moderately over the limit → **P2**.
+- **All other methods**: estimate **cyclomatic complexity** — count decision points (`if`/`else`, `switch` cases, loops, `&&`/`||`, `?:`, `catch`, early-return guards). A method that is genuinely hard to follow (high branching + deep nesting + several responsibilities) is a **P1**: "excessive complexity — split into smaller functions." Give the approximate branch count and max nesting depth as evidence.
+
+Cite `method name + file:line + measured depth / branch count`. Do not flag small methods that merely look busy — only ones a maintainer would struggle to follow.
+
 - Also flag any complex function/calculation with an explanation of what it does
   and whether logic is correct.
 

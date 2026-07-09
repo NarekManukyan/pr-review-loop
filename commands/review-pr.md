@@ -127,6 +127,15 @@ Only flag a missing regen if there is **direct evidence** the contract was broke
    - **P1** – Significant bug, architectural violation, or serious performance issue. Should fix before merge.
    - **P2** – Code smell, minor inefficiency, readability concern. Fix when convenient.
 
+### Complexity check (measure, then flag the worst)
+
+For every non-trivial method/function in the diff, assess complexity and flag the worst offenders. Cite the measurement so it is a FACT, not an opinion:
+
+- **UI build methods** (Flutter `build()`, React / Vue / Svelte render / JSX, any widget or component tree): measure widget/element **nesting depth**. Depth **> 6–8 levels** = an oversized build method → flag it and recommend extracting the nested subtrees into named sub-widgets / components. Report the measured depth. Deeply nested **and** long (≈100+ lines) → **P1**; moderately over the limit → **P2**.
+- **All other methods**: estimate **cyclomatic complexity** — count decision points (`if`/`else`, `switch` cases, loops, `&&`/`||`, `?:`, `catch`, early-return guards). A method that is genuinely hard to follow (high branching + deep nesting + several responsibilities) is a **P1**: "excessive complexity — split into smaller functions." Give the approximate branch count and max nesting depth as evidence.
+
+Cite `method name + file:line + measured depth / branch count`. Do not flag small methods that merely look busy — only ones a maintainer would struggle to follow.
+
    Additionally, flag any **complex function or non-trivial calculation** with a dedicated comment explaining what it does and whether the logic is correct.
 
 5. **After all inline comments**, write a structured **Review Overview** AND **post it as a top-level PR issue comment** (`gh pr comment <N> --repo OWNER/REPO --body "..."`) so the developer sees it on the PR, not only in the terminal. The same overview text MUST appear both in the terminal output and on GitHub. Sections:

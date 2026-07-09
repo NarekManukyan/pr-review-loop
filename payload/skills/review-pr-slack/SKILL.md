@@ -101,6 +101,15 @@ Spawn four agents **in parallel** (Agent tool, `run_in_background: true`):
 
 - **A — Architecture & Patterns**: layering, BLoC/state-management correctness, DI, separation of concerns
 - **B — Correctness & Edge Cases**: logic bugs, null safety, async/races, error handling, hardcoded placeholders
+### Complexity check (measure, then flag the worst)
+
+For every non-trivial method/function in the diff, assess complexity and flag the worst offenders. Cite the measurement so it is a FACT, not an opinion:
+
+- **UI build methods** (Flutter `build()`, React / Vue / Svelte render / JSX, any widget or component tree): measure widget/element **nesting depth**. Depth **> 6–8 levels** = an oversized build method → flag it and recommend extracting the nested subtrees into named sub-widgets / components. Report the measured depth. Deeply nested **and** long (≈100+ lines) → **P1**; moderately over the limit → **P2**.
+- **All other methods**: estimate **cyclomatic complexity** — count decision points (`if`/`else`, `switch` cases, loops, `&&`/`||`, `?:`, `catch`, early-return guards). A method that is genuinely hard to follow (high branching + deep nesting + several responsibilities) is a **P1**: "excessive complexity — split into smaller functions." Give the approximate branch count and max nesting depth as evidence.
+
+Cite `method name + file:line + measured depth / branch count`. Do not flag small methods that merely look busy — only ones a maintainer would struggle to follow.
+
 - **C — Performance & Code Quality**: rebuilds, per-frame/per-keystroke work, complexity, naming, localization/design-system violations, dead code
 - **D — Build & Analyze**: verifies each open MR actually compiles and passes static analysis. Per MR: fetch the source branch, create an isolated `git worktree` (never touch the user's working tree), install deps and run the stack's compile/analyze step (Flutter: `flutter pub get` + codegen if needed + `dart analyze`; Node: install + `tsc`/build; Go: `go build ./... && go vet`), then remove the worktree. Compile/analyzer **errors** → P0 findings with the tool output quoted; **warning/info counts** → reported per MR for the verdict. Skip already-merged MRs.
 

@@ -3,6 +3,15 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.5.0
+
+Added
+- Complexity check in every reviewer: measures method complexity and flags the
+  worst. UI build methods with widget/element **nesting > 6–8** are marked as
+  oversized (extract sub-widgets); other methods with high **cyclomatic
+  complexity** are raised as **P1** ("split into smaller functions"), with the
+  measured depth / branch count cited as evidence.
+
 ## 1.4.0
 
 Added
