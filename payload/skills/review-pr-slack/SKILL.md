@@ -251,6 +251,29 @@ every other hard rule — no GitLab/GitHub comments, generated-file skipping,
 FACT-vs-ASSUMPTION. Cap work per cycle (e.g. ≤3 PRs) so one cycle can't run away;
 the next cycle picks up the rest.
 
+## Interactive report (developer replies → next round)
+
+The HTML report is interactive when opened in a browser (Slack's preview is
+read-only — download to interact). Each comment has a stable `#id`, a status
+(fixed / disagree / later) and a reply box; each file has a "viewed" checkbox that
+collapses it; state persists in `localStorage`. A **Copy Next Round** button
+assembles every comment the developer responded to into Slack-ready text:
+
+```
+Next round — <title>
+• <file:line> — <finding title> [fixed|disagree|later]
+    ↳ <their reply>
+```
+
+The developer pastes that into the PR's Slack thread. On the **next review round**
+this is exactly the thread text the skill reads as `thread-context.md`, and the
+status tags map to memory resolutions: `fixed → resolved`, `disagree → disputed`,
+`later → deferred`. So a dev answering findings in the report, one click, feeds
+straight back into the re-review and review memory — no hand-writing.
+
+When delivering, tell the developer: open the report, answer the comments, hit
+**Copy Next Round**, paste into the thread to trigger round N+1.
+
 ## Final output to the user
 
 Lead with results: totals, per-MR verdict + headline findings, the sent Slack message link, HTML path on Desktop, and confirmation that the report was auto-uploaded into the thread (or, if the upload failed / token missing, the reminder to attach it manually).

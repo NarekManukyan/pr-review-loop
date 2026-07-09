@@ -119,17 +119,28 @@ def render_comment(f):
       <div class="comment-body"><div class="cbody">{md(f['body'])}</div></div>
     </div>"""
     c, bg, label = SEV_COLORS[f['severity']]
+    loc = esc(f['file']) + (f":{f['line']}" if f.get('line') else '')
     return f"""
-    <div class="comment" id="finding-{f['id']}">
+    <div class="comment" id="finding-{f['id']}" data-cid="{f['id']}" data-loc="{loc}"
+         data-title="{esc(f['title'])}" data-sev="{f['severity']}" data-mr="{f.get('mr','')}">
       <div class="comment-head">
         <span class="avatar" style="background:{rc}">{rev_avatar(f['reviewer'])}</span>
         <span class="rev-name">{esc(rev_name(f['reviewer']))}</span>
+        <span class="cid">#{f['id']}</span>
         <span class="sev" style="color:{c};background:{bg};border:1px solid {c}33">{label}</span>
       </div>
       <div class="comment-body">
         <div class="ctitle">{md(f['title'])}</div>
         <div class="cbody">{md(f['body'])}</div>
         {snippet}
+        <div class="cactions">
+          <div class="pills">
+            <button type="button" class="pill" data-s="fixed">fixed</button>
+            <button type="button" class="pill" data-s="disagree">disagree</button>
+            <button type="button" class="pill" data-s="later">later</button>
+          </div>
+          <textarea class="creply" rows="1" placeholder="Reply — why it's wrong, why to ignore, or how you fixed it…"></textarea>
+        </div>
       </div>
     </div>"""
 
@@ -191,8 +202,11 @@ def render_file(mr, path, lines, file_findings):
     nfind = sum(1 for f in file_findings if not f.get('plusone'))
     badge = f"<span class='fbadge'>{nfind} comment{'s' if nfind!=1 else ''}</span>"
     return f"""
-    <details class="file" open data-lang="{lang_of(path)}">
-      <summary><span class="fpath">{esc(path)}</span>{badge}</summary>
+    <details class="file" open data-lang="{lang_of(path)}" data-file="{esc(path)}">
+      <summary><span class="fpath">{esc(path)}</span>{badge}
+        <label class="viewed" title="Mark file as viewed (collapses it)">
+          <input type="checkbox" class="viewedbox"> viewed</label>
+      </summary>
       {table}
       {tail}
     </details>"""
@@ -389,6 +403,86 @@ THEME_SCRIPT = """<script>
 })();
 </script>"""
 
+REPORT_ID = re.sub(r'[^a-z0-9]+', '-', (TITLE + ' ' + meta.get('date', '')).lower()).strip('-') or 'report'
+
+# Interactive layer: per-comment status + reply, per-file "viewed", collapse/expand,
+# and a "Copy Next Round" button that assembles all responses into Slack text.
+# State persists in localStorage. Runs in a browser (downloaded); Slack's sandboxed
+# preview may not run it — the report stays readable there.
+INTERACT_SCRIPT = """<script>
+(function(){
+  var wrap=document.querySelector('.wrap'); if(!wrap) return;
+  var RID='prl:'+(wrap.getAttribute('data-report')||'r');
+  var st={status:{},reply:{},viewed:{}};
+  try{ var raw=localStorage.getItem(RID); if(raw) st=JSON.parse(raw); }catch(e){}
+  st.status=st.status||{}; st.reply=st.reply||{}; st.viewed=st.viewed||{};
+  function save(){ try{ localStorage.setItem(RID, JSON.stringify(st)); }catch(e){} }
+  function autosize(t){ t.style.height='auto'; t.style.height=t.scrollHeight+'px'; }
+  function updateCount(){
+    var n=0;
+    document.querySelectorAll('.comment[data-cid]').forEach(function(c){
+      var id=c.getAttribute('data-cid');
+      if(st.status[id] || (st.reply[id]&&st.reply[id].trim())) n++;
+    });
+    var el=document.getElementById('tcount'); if(el) el.textContent=n+' response'+(n===1?'':'s')+' added';
+  }
+  document.querySelectorAll('.comment[data-cid]').forEach(function(c){
+    var id=c.getAttribute('data-cid'), s=st.status[id];
+    c.querySelectorAll('.pill').forEach(function(p){ p.classList.toggle('on', p.getAttribute('data-s')===s); });
+    c.classList.toggle('done', !!s);
+    var ta=c.querySelector('.creply'); if(ta){ if(st.reply[id]) ta.value=st.reply[id]; autosize(ta); }
+  });
+  document.querySelectorAll('details.file[data-file]').forEach(function(d){
+    var f=d.getAttribute('data-file'), box=d.querySelector('.viewedbox');
+    if(st.viewed[f]){ if(box) box.checked=true; d.open=false; d.classList.add('viewed-on'); }
+  });
+  updateCount();
+  document.addEventListener('click', function(e){
+    var pill=e.target.closest && e.target.closest('.pill'); if(!pill) return;
+    e.preventDefault();
+    var c=pill.closest('.comment'), id=c.getAttribute('data-cid'), s=pill.getAttribute('data-s');
+    if(st.status[id]===s){ delete st.status[id]; } else { st.status[id]=s; }
+    c.querySelectorAll('.pill').forEach(function(p){ p.classList.toggle('on', p.getAttribute('data-s')===st.status[id]); });
+    c.classList.toggle('done', !!st.status[id]); save(); updateCount();
+  });
+  document.addEventListener('input', function(e){
+    var ta=e.target; if(!(ta.classList&&ta.classList.contains('creply'))) return;
+    st.reply[ta.closest('.comment').getAttribute('data-cid')]=ta.value; save(); autosize(ta); updateCount();
+  });
+  document.addEventListener('change', function(e){
+    var box=e.target; if(!(box.classList&&box.classList.contains('viewedbox'))) return;
+    var d=box.closest('details.file'), f=d.getAttribute('data-file');
+    if(box.checked){ st.viewed[f]=true; d.open=false; d.classList.add('viewed-on'); }
+    else { delete st.viewed[f]; d.classList.remove('viewed-on'); }
+    save();
+  });
+  var ea=document.getElementById('expandAll'), ca=document.getElementById('collapseAll');
+  if(ea) ea.onclick=function(){ document.querySelectorAll('details.file').forEach(function(d){ d.open=true; }); };
+  if(ca) ca.onclick=function(){ document.querySelectorAll('details.file').forEach(function(d){ d.open=false; }); };
+  function buildNextRound(){
+    var lines=['Next round — '+(document.title||'').replace('🔍','').trim(),''];
+    var any=false;
+    document.querySelectorAll('.comment[data-cid]').forEach(function(c){
+      var id=c.getAttribute('data-cid'), s=st.status[id], r=(st.reply[id]||'').trim();
+      if(!s && !r) return; any=true;
+      lines.push('• '+c.getAttribute('data-loc')+' — '+c.getAttribute('data-title')+(s?' ['+s+']':''));
+      if(r) lines.push('    ↳ '+r);
+    });
+    if(!any) lines.push('(no responses added yet — pick fixed/disagree/later or write a reply on a comment)');
+    return lines.join('\\n');
+  }
+  var toastEl;
+  function toast(m){ if(!toastEl){ toastEl=document.createElement('div'); toastEl.className='toast'; document.body.appendChild(toastEl);} toastEl.textContent=m; toastEl.classList.add('show'); setTimeout(function(){toastEl.classList.remove('show');},1800); }
+  function fallbackCopy(t){ var a=document.createElement('textarea'); a.value=t; document.body.appendChild(a); a.select(); try{document.execCommand('copy');}catch(e){} a.remove(); }
+  var cb=document.getElementById('copyNext');
+  if(cb) cb.onclick=function(){
+    var txt=buildNextRound();
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(function(){toast('Copied — paste into the Slack thread');},function(){fallbackCopy(txt);toast('Copied');}); }
+    else { fallbackCopy(txt); toast('Copied'); }
+  };
+})();
+</script>"""
+
 page = f"""<meta charset="utf-8">
 <title>{esc(TITLE)}</title>
 <script>try{{var v=localStorage.getItem('mrreview-theme');if(v==='light'||v==='dark')document.documentElement.setAttribute('data-theme',v);}}catch(e){{}}</script>
@@ -504,14 +598,49 @@ page = f"""<meta charset="utf-8">
   .fixprompt > summary {{ padding:10px 14px; cursor:pointer; font-weight:600; font-size:14px; background:var(--header); }}
   .fixprompt pre {{ margin:0; padding:14px; overflow-x:auto; font-size:12px; background:var(--card); white-space:pre-wrap; }}
   .sub {{ margin:16px 16px 0; }}
+  /* ---- interactive controls ---- */
+  .toolbar {{ position:sticky; top:0; z-index:50; display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+              background:var(--bg); padding:10px 0; margin-bottom:10px; border-bottom:1px solid var(--border); }}
+  .tbtn {{ border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:8px;
+           padding:6px 12px; font-size:13px; cursor:pointer; }}
+  .tbtn:hover {{ border-color:var(--muted); }}
+  .tbtn.primary {{ background:var(--link); color:#fff; border-color:var(--link); }}
+  .tcount {{ font-size:13px; color:var(--muted); margin-left:auto; }}
+  .cid {{ font-size:11px; color:var(--muted); background:var(--header); border:1px solid var(--border);
+          border-radius:2em; padding:1px 7px; }}
+  .cactions {{ margin-top:10px; display:flex; flex-direction:column; gap:6px; }}
+  .pills {{ display:flex; gap:6px; }}
+  .pill {{ border:1px solid var(--border); background:var(--card); color:var(--muted); border-radius:2em;
+           padding:2px 12px; font-size:12px; cursor:pointer; }}
+  .pill:hover {{ border-color:var(--muted); }}
+  .pill.on[data-s="fixed"] {{ background:#dafbe1; color:#1a7f37; border-color:#1a7f3766; }}
+  .pill.on[data-s="disagree"] {{ background:#ffebe9; color:#cf222e; border-color:#cf222e66; }}
+  .pill.on[data-s="later"] {{ background:#fff8c5; color:#9a6700; border-color:#9a670066; }}
+  .creply {{ width:100%; font:inherit; font-size:13px; color:var(--text); background:var(--card-alt);
+             border:1px solid var(--border); border-radius:8px; padding:7px 10px; resize:vertical; min-height:34px; }}
+  .creply:focus {{ outline:none; border-color:var(--link); }}
+  .comment.done {{ opacity:.6; }}
+  .comment.done .ctitle {{ text-decoration:line-through; }}
+  .viewed {{ margin-left:auto; font-size:12px; color:var(--muted); font-weight:400; cursor:pointer;
+             display:flex; align-items:center; gap:4px; }}
+  details.file.viewed-on {{ opacity:.65; }}
+  .toast {{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#1a7f37; color:#fff;
+            padding:8px 16px; border-radius:8px; font-size:13px; opacity:0; transition:opacity .2s; z-index:200; pointer-events:none; }}
+  .toast.show {{ opacity:1; }}
 </style>
 <div class="theme-toggle" role="group" aria-label="Theme">
   <button type="button" data-set="light" title="Light">☀</button>
   <button type="button" data-set="dark" title="Dark">☾</button>
   <button type="button" data-set="system" title="System">🖥</button>
 </div>
-<div class="wrap">
+<div class="wrap" data-report="{esc(REPORT_ID)}">
   <h1>🔍 {esc(TITLE)}</h1>
+  <div class="toolbar">
+    <button type="button" class="tbtn primary" id="copyNext">Copy Next Round ⧉</button>
+    <button type="button" class="tbtn" id="expandAll">Expand all</button>
+    <button type="button" class="tbtn" id="collapseAll">Collapse all</button>
+    <span class="tcount" id="tcount"></span>
+  </div>
   <div class="banner">
     <span class="tot">Totals:</span>
     <span class="cnt" style="color:#cf222e;font-weight:600">P0: {total['P0']}</span> ·
@@ -526,6 +655,7 @@ page = f"""<meta charset="utf-8">
 </div>
 {'' if HL else CLIENT_SCRIPT}
 {THEME_SCRIPT}
+{INTERACT_SCRIPT}
 """
 open(f'{BASE}/mr-review.html', 'w', encoding='utf-8').write(page)
 print('written', f'{BASE}/mr-review.html', len(page))

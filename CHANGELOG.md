@@ -3,6 +3,15 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.4.0
+
+Added
+- Interactive HTML report (in a browser): per-comment status (fixed / disagree /
+  later) + reply box, per-file "viewed" collapse, expand/collapse all, stable
+  comment `#id`s, and a **Copy Next Round** button that assembles all responses
+  into Slack text. State persists in localStorage. The copied text pastes into the
+  PR thread and feeds the next round (status tags map to memory resolutions).
+
 ## 1.3.2
 
 Changed
