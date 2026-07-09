@@ -198,17 +198,6 @@ extra generated-file globs:
 python3 ~/.claude/skills/review-memory/scripts/memory.py config . --init   # writes an editable default
 ```
 
-### CI instead of a laptop loop
-
-A local `/loop` is fine to start; the durable production form is a CI job that
-reviews each PR on push. Templates in [`ci/`](ci/):
-
-- `ci/github-pr-review.yml` → copy to `.github/workflows/`, set `ANTHROPIC_API_KEY`.
-- `ci/gitlab-pr-review.yml` → add to `.gitlab-ci.yml`, set `ANTHROPIC_API_KEY`.
-
-Both run `/review-pr` on the PR and can commit `.review-memory/` back so memory
-persists across runs.
-
 ---
 
 ## Review memory
@@ -347,7 +336,6 @@ pr-review-loop/
 │   ├── review-memory/            # learning engine (recall/record/note/distill/health/config/doctor)
 │   ├── review-pr-slack/          # panel → HTML report + Slack verdict
 │   └── slack-send/               # msg / report upload / reactions / channel watch
-├── ci/                           # GitHub Actions + GitLab CI templates
 ├── hooks/ensure-and-nudge.sh     # SessionStart: sync skills, install graphify, distill nudge
 ├── scripts/ensure-graphify.sh    # best-effort graphify installer
 ├── install.sh                    # standalone (no-marketplace) installer

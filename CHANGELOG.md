@@ -14,8 +14,6 @@ Added
 - `--dry-run` for both watchers — report what would be reviewed without acting.
 - `memory.py health` — review-health report: volume, dispute rate per category
   (precision proxy), open watch items, deferred-not-closed.
-- CI templates under `ci/` — run `/review-pr` from GitHub Actions / GitLab CI (the
-  durable production form of the local `/loop`).
 
 Notes
 - The PR watcher intentionally **skips a bare re-request with no new commits** —
