@@ -34,8 +34,14 @@ eyes / white_check_mark / wrench).
    ```
    This returns a JSON array of top-level messages that contain a GitLab MR /
    GitHub PR URL, each with `ts`, `user`, `urls`, `state`, `reply_count`,
-   `last_reply_ts`. If `watch.sh` prints `NO_TOKEN`, tell the user to run
-   `~/.claude/skills/slack-send/install.sh` and stop.
+   `last_reply_ts`.
+
+   **On a Slack auth failure** (`NO_TOKEN` exit 3, or `SCOPE_ERROR` exit 4):
+   handle it per the review-pr-slack skill's "Slack auth errors — prompt, don't
+   dead-end" section. Run **by hand** → `AskUserQuestion` offering to reconnect
+   (run `~/.claude/skills/slack-send/install.sh`) then retry. Inside **`/loop`** →
+   report once and **stop the loop** (don't repeat the failure every cycle); tell
+   the user to re-auth and re-run `/loop`.
 
 2. **Pick work (cap at 3 per cycle** so a cycle can't run away; the next cycle
    continues):

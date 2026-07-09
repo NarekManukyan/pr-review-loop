@@ -29,6 +29,29 @@ When the trigger is a **channel message** (a Slack message URL, or watch mode �
 
 `react.sh state <channel> <anchor_ts> <emoji>` clears prior state emojis and sets one, so transitions are clean (👀 → ✅/🔧). Skip reactions for the pure-DM case (no channel anchor message).
 
+## Slack auth errors — prompt, don't dead-end
+
+Any Slack script may fail because the token is missing or under-scoped:
+`msg.sh`/`send.sh` exit `3` (`NO_TOKEN`); `watch.sh`/`react.sh` also emit
+`SCOPE_ERROR:` on stderr and exit `4` (missing `channels:history` /
+`groups:history` / `reactions:*`). **Do not** just print the error and the fix
+command — handle it:
+
+- **Interactive run** (manual `/review-pr-slack`, or a watch cycle run by hand):
+  use `AskUserQuestion` — "Slack needs (re)connecting to continue (missing
+  token/scopes). Reconnect now?" with options **Reconnect now** / **Skip Slack for
+  this run** / **Cancel**. On *Reconnect now*, run
+  `~/.claude/skills/slack-send/install.sh` (it opens the browser OAuth — the user
+  approves the scopes), then retry the failed step. On *Skip*, finish the review
+  and hand back the HTML report path without posting.
+
+- **Unattended `/loop`** (no user to ask): report the problem **once** and **stop
+  the loop** — do not let it repeat the same failure every cycle. Tell the user to
+  re-auth (`slack-send/install.sh`) and re-run `/loop`.
+
+This applies everywhere a Slack call is made (reactions, message, upload, channel
+scan), not just at delivery.
+
 ## Workflow
 
 ### 1. Resolve input & fetch MRs/PRs

@@ -50,7 +50,12 @@ api conversations.history -d "channel=$CH" -d "limit=$LIMIT" | python3 -c '
 import sys, json, re
 d = json.load(sys.stdin)
 if not d.get("ok"):
-    sys.stderr.write("history error: %s\n" % d.get("error","")); sys.exit(2)
+    err = d.get("error","")
+    if err == "missing_scope":
+        sys.stderr.write("SCOPE_ERROR: token missing channels:history / groups:history "
+                         "(re-auth: ~/.claude/skills/slack-send/install.sh)\n")
+        sys.exit(4)
+    sys.stderr.write("history error: %s\n" % err); sys.exit(2)
 URL = re.compile(r"https?://[^\s|>]+/(?:-/merge_requests|merge_requests|pull)/\d+")
 STATE = {"eyes":"in_progress","white_check_mark":"reviewed","wrench":"reviewed","rotating_light":"reviewed"}
 out = []

@@ -3,6 +3,15 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.3.2
+
+Changed
+- Slack auth failures now **prompt** instead of dead-ending. On a missing token or
+  scope, an interactive run asks (AskUserQuestion) whether to reconnect Slack and
+  runs the re-auth for you; a `/loop` run reports once and stops instead of
+  erroring every cycle. `watch.sh` emits `SCOPE_ERROR` (exit 4) so the skill can
+  branch on it.
+
 ## 1.3.1
 
 Added
