@@ -1,14 +1,14 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "pr-review-loop",
-  "description": "PR code-review tooling for Claude Code.",
+  "description": "PR review + self-improving review memory + Slack automation for Claude Code.",
   "owner": {
     "name": "NarekManukyan"
   },
   "plugins": [
     {
       "name": "pr-review-loop",
-      "description": "/review-pr panel review + self-improving per-repo review memory.",
+      "description": "/review-pr panel, /review-pr-slack HTML+Slack, /review-pr-slack-watch loop, and per-repo review memory.",
       "source": "./",
       "category": "productivity"
     }

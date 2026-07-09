@@ -1,36 +1,48 @@
 #!/usr/bin/env bash
 # Standalone installer for the pr-review-loop plugin (no marketplace needed).
-# Installs the /review-pr command and the review-memory skill into ~/.claude.
-# The one-click path is the Claude Code marketplace (see README); this script is
-# the zip/clone fallback for machines that can't add a marketplace.
+# Installs the commands + bundled skills into ~/.claude. The one-click path is the
+# Claude Code marketplace (see README); this is the zip/clone fallback.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
-
 mkdir -p "$HOME/.claude/commands" "$HOME/.claude/skills"
-echo "Installing /review-pr command -> ~/.claude/commands/review-pr.md"
-cp "$SRC/commands/review-pr.md" "$HOME/.claude/commands/review-pr.md"
 
-echo "Installing review-memory skill -> ~/.claude/skills/review-memory"
-rm -rf "$HOME/.claude/skills/review-memory.bak"
-[ -d "$HOME/.claude/skills/review-memory" ] && mv "$HOME/.claude/skills/review-memory" "$HOME/.claude/skills/review-memory.bak"
-cp -R "$SRC/skills/review-memory" "$HOME/.claude/skills/review-memory"
+echo "Installing commands -> ~/.claude/commands/"
+cp "$SRC"/commands/*.md "$HOME/.claude/commands/"
+
+echo "Installing bundled skills -> ~/.claude/skills/"
+for s in "$SRC"/payload/skills/*/; do
+  name="$(basename "$s")"
+  rm -rf "$HOME/.claude/skills/$name.bak"
+  [ -d "$HOME/.claude/skills/$name" ] && mv "$HOME/.claude/skills/$name" "$HOME/.claude/skills/$name.bak"
+  cp -R "$s" "$HOME/.claude/skills/$name"
+  echo "  - $name"
+done
+
+# syntax highlighting for the HTML report (review-pr-slack)
+if command -v npm >/dev/null 2>&1; then
+  echo "Installing shiki (HTML report highlighting)…"
+  (cd "$HOME/.claude/skills/review-pr-slack/scripts" && npm install --no-fund --no-audit --silent) || \
+    echo "  (shiki install skipped — report falls back to CDN highlighting)"
+fi
 
 echo "Ensuring graphify (optional semantic recall)…"
 bash "$SRC/scripts/ensure-graphify.sh" --force || true
 
 echo
-echo "Done. Restart Claude Code (new session), then run /review-pr <PR_URL>."
+echo "Done. Restart Claude Code (new session)."
+echo
+echo "Commands:"
+echo "  /review-pr <PR_URL>                     panel review + review memory (inline, this repo)"
+echo "  /review-pr-slack <PR_URLs | slack-msg>  panel review -> HTML report + Slack verdict"
+echo "  /review-pr-slack-watch #channel         one watch cycle (wrap in /loop to run continuously)"
 echo
 echo "Prerequisites:"
 echo "  - gh CLI authenticated (or glab for GitLab)"
-echo "  - graphify: auto-installed above if possible; JSONL recall works even if it isn't"
+echo "  - Slack: connect the sender token once ->  ~/.claude/skills/slack-send/install.sh"
+echo "    (needed for the Slack verdict message, report upload, and reaction state)"
+echo "  - graphify: auto-installed above if possible; JSONL recall works even without it"
 echo
-echo "Auto-improvement: after each review the panel records findings + how you"
-echo "responded into a committed .review-memory/ folder in the repo, and recalls"
-echo "them next time. When a finding keeps getting the same verdict, you'll be"
-echo "nudged to codify it into CLAUDE.md / an ADR. Memory never overrides CLAUDE.md."
-echo
-echo "(The SessionStart nudge only runs when installed as a plugin via the"
-echo "marketplace. With this standalone install, run distill yourself:"
-echo "  python3 ~/.claude/skills/review-memory/scripts/memory.py distill .)"
+echo "Reactions encode PR state on the trigger message: 👀 reviewing · ✅ approved · 🔧 changes requested."
+echo "Review memory learns per repo from developer responses; recurring lessons get promoted"
+echo "by a human into CLAUDE.md/an ADR (run: memory.py distill .). Memory never overrides CLAUDE.md."

@@ -1,40 +1,41 @@
 #!/usr/bin/env bash
 # SessionStart hook for the pr-review-loop plugin.
-#   1. Ensures the review-memory skill is available at ~/.claude/skills/ so the
-#      /review-pr command's memory.py path resolves (marketplace installs bundle
-#      the skill inside the plugin; the command uses the standard skills path).
-#   2. If the current repo has a .review-memory/ corpus, surfaces findings that
-#      have recurred enough with a consistent developer verdict — a nudge to
-#      promote them into CLAUDE.md/an ADR. Human decides; nothing auto-edits.
+#   1. Syncs the plugin's bundled skills (payload/skills/*) into ~/.claude/skills
+#      so the commands' absolute skill paths resolve and each skill is discovered
+#      from ONE canonical location (no duplicate registration with the plugin).
+#   2. One-time best-effort graphify install, backgrounded (never blocks).
+#   3. If the current repo has a .review-memory/ corpus with findings that keep
+#      getting the same developer verdict, nudges to codify them into CLAUDE.md/
+#      an ADR. Human decides; nothing auto-edits.
 # Always exits 0 so it can never block a session.
 set -u
 
-DEST="$HOME/.claude/skills/review-memory"
-SRC="${CLAUDE_PLUGIN_ROOT:-}/skills/review-memory"
+SKILLS_DEST="$HOME/.claude/skills"
+PAYLOAD="${CLAUDE_PLUGIN_ROOT:-}/payload/skills"
 
-# 1. ensure-install (copy if missing or older) — idempotent, best-effort
-if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -d "$SRC" ]; then
-  if [ ! -f "$DEST/scripts/memory.py" ]; then
-    mkdir -p "$HOME/.claude/skills"
-    cp -R "$SRC" "$DEST" 2>/dev/null || true
-  elif [ "$SRC/scripts/memory.py" -nt "$DEST/scripts/memory.py" ]; then
-    cp -R "$SRC/." "$DEST/" 2>/dev/null || true
-  fi
+# 1. sync bundled skills (copy when missing or plugin copy is newer) — idempotent
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -d "$PAYLOAD" ]; then
+  mkdir -p "$SKILLS_DEST"
+  for s in "$PAYLOAD"/*/; do
+    [ -d "$s" ] || continue
+    dst="$SKILLS_DEST/$(basename "$s")"
+    if [ ! -e "$dst" ] || [ "$s/SKILL.md" -nt "$dst/SKILL.md" ]; then
+      cp -R "$s" "$dst" 2>/dev/null || true
+    fi
+  done
 fi
 
-MEM="$DEST/scripts/memory.py"
-[ -f "$MEM" ] || exit 0
-command -v python3 >/dev/null 2>&1 || exit 0
+MEM="$SKILLS_DEST/review-memory/scripts/memory.py"
 
-# One-time best-effort graphify install, backgrounded so it NEVER blocks session
-# start. Marker inside the script prevents repeat attempts. Optional — JSONL
-# recall works without it.
+# 2. one-time best-effort graphify install, backgrounded so it NEVER blocks start
 if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -x "${CLAUDE_PLUGIN_ROOT}/scripts/ensure-graphify.sh" ] \
    && [ ! -f "$HOME/.claude/.pr-review-loop-graphify-checked" ] && ! command -v graphify >/dev/null 2>&1; then
   nohup bash "${CLAUDE_PLUGIN_ROOT}/scripts/ensure-graphify.sh" >/dev/null 2>&1 &
 fi
 
-# 2. nudge only when this repo has review memory with ripe candidates
+# 3. nudge only when this repo has review memory with ripe candidates
+[ -f "$MEM" ] || exit 0
+command -v python3 >/dev/null 2>&1 || exit 0
 [ -d "./.review-memory" ] || exit 0
 RIPE="$(python3 "$MEM" ripe . 2>/dev/null)"
 [ -z "$RIPE" ] && exit 0

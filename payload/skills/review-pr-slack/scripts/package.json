@@ -1,0 +1,10 @@
+{
+  "name": "review-pr-slack-highlighter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Build-time shiki highlighter for the review-pr-slack Claude Code skill",
+  "type": "module",
+  "dependencies": {
+    "shiki": "^3.23.0"
+  }
+}

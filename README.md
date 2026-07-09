@@ -1,15 +1,33 @@
 # pr-review-loop — Claude Code plugin
 
-`/review-pr` panel review + a **self-improving per-repo review memory**, packaged
-as a one-click Claude Code plugin for the team.
+A PR review toolkit + a **self-improving per-repo review memory**, packaged as a
+one-click Claude Code plugin for the team.
 
-- **`/review-pr <PR_URL>`** — a 3-persona senior-engineer review panel
+**Commands**
+
+- **`/review-pr <PR_URL>`** — 3-persona senior-engineer review panel
   (Architecture / Correctness · Edge Cases / Performance · Quality) with
-  FACT-vs-ASSUMPTION discipline, ADR citations, and a copy-paste fix prompt.
+  FACT-vs-ASSUMPTION discipline, ADR citations, and a copy-paste fix prompt. Posts
+  inline (this repo).
+- **`/review-pr-slack <PR URLs | Slack message URL>`** — same panel, delivered as
+  a self-contained **HTML report** (highlighted diffs, only commented hunks, build
+  status, fix prompts) + a short **verdict message** posted to Slack. Never
+  comments on GitLab/GitHub. Give it a Slack message URL and it reads the thread,
+  extracts the PR links, and replies the verdict there.
+- **`/review-pr-slack-watch #channel`** — one watch cycle; wrap in `/loop` to run
+  continuously (see **Loop mode**).
+
+**Reactions = PR state.** On the trigger message: 👀 review in progress →
+✅ approved / 🔧 changes requested. This doubles as the loop's state machine, so
+the watcher needs no external database.
+
 - **review-memory** — after each review the panel records findings + how
   developers responded (resolved / deferred / disputed / clarified) into a
   committed `.review-memory/` folder in the repo, and recalls them next round so
   it stops re-raising dismissed findings and checks that deferred fixes landed.
+  Humans can also drop **sticky watch items** (`memory.py note`) — "verify this
+  complex logic in future PRs" — that resurface in every future review of that
+  area until closed.
 - **Auto-improvement, safely** — a SessionStart hook surfaces findings that keep
   getting the same developer verdict and nudges you to codify them into
   CLAUDE.md / an ADR. Recording and recall are automatic; **promoting a rule is a
@@ -48,6 +66,32 @@ install; standalone users run `distill` by hand — see below.)
   installed on a given machine, deterministic JSONL recall still works — nothing
   breaks. Marker file `~/.claude/.pr-review-loop-graphify-checked` stops retries;
   delete it (or run `scripts/ensure-graphify.sh --force`) to retry.
+
+## Slack setup (for /review-pr-slack and the watcher)
+
+The Slack verdict message, report upload, and reactions post as you via a sender
+token — connect it once:
+
+```bash
+~/.claude/skills/slack-send/install.sh
+```
+
+Without it, review still works locally; only the Slack delivery/reactions need the token.
+
+## Loop mode
+
+Run the watcher continuously over a channel — reactions are the state (unreacted
+PR = to-do, 👀 = in progress, ✅/🔧 = done), so it never re-reviews the same thing:
+
+```
+/loop 10m /review-pr-slack-watch #your-review-channel
+```
+
+Each cycle: reviews **new** PRs (message with a PR URL and no state reaction), and
+picks up **next rounds** (a reviewed PR whose author replied asking to re-review —
+the thread replies feed the re-review and memory recall applies). Capped per cycle
+so it can't run away. In loop mode the interactive send-confirmation is skipped
+(the `/loop` is the standing authorization); all other guardrails stay.
 
 ## Why per-repo memory (not shared)
 

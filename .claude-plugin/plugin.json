@@ -1,6 +1,6 @@
 {
   "name": "pr-review-loop",
-  "description": "PR review panel (/review-pr) with per-repo self-improving review memory. 3 senior-engineer reviewer personas, FACT-vs-ASSUMPTION discipline, and a .review-memory/ corpus that learns from developer responses across rounds without ever overriding CLAUDE.md / ADRs.",
+  "description": "PR review toolkit for Claude Code: /review-pr panel (inline), /review-pr-slack (HTML report + Slack verdict), and /review-pr-slack-watch (loop over a channel, reactions as PR state). Self-improving per-repo review memory learns from developer responses across rounds; never overrides CLAUDE.md/ADRs.",
   "version": "1.0.0",
   "author": {
     "name": "NarekManukyan"
