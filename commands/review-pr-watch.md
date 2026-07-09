@@ -12,7 +12,9 @@ Target: $ARGUMENTS (default: the current repo's remote).
 
 State lives in review memory (`memory.py mark-reviewed` / `was-reviewed`), keyed by
 `PR number + head commit`, so a PR is reviewed **once per head** — the next round
-fires only when new commits land or a re-request produces a new head.
+fires only when new commits land or a re-request produces a new head. A bare
+re-request with **no new commits is intentionally skipped**: nothing changed to
+review, so re-reviewing the identical head would just repeat the last round.
 
 ## Steps
 

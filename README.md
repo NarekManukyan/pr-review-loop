@@ -1,141 +1,314 @@
-# pr-review-loop — Claude Code plugin
+# pr-review-loop
 
-A PR review toolkit + a **self-improving per-repo review memory**, packaged as a
-one-click Claude Code plugin for the team.
+A Claude Code plugin that turns PR review into a repeatable, self-improving loop.
+Three review commands share one 4-agent review panel and a **per-repo memory** that
+learns from how developers respond — so across an 8-round PR it stops re-raising
+things the team already dismissed, and remembers what to keep an eye on.
 
-**Commands**
+> It never posts to GitLab/GitHub on its own except via `/review-pr` (which is a
+> normal reviewer posting inline). It never overrides your repo's `CLAUDE.md` /
+> ADRs — those always win.
 
-- **`/review-pr <PR_URL>`** — 3-persona senior-engineer review panel
-  (Architecture / Correctness · Edge Cases / Performance · Quality) with
-  FACT-vs-ASSUMPTION discipline, ADR citations, and a copy-paste fix prompt. Posts
-  inline (this repo).
-- **`/review-pr-slack <PR URLs | Slack message URL>`** — same panel, delivered as
-  a self-contained **HTML report** (highlighted diffs, only commented hunks, build
-  status, fix prompts) + a short **verdict message** posted to Slack. Never
-  comments on GitLab/GitHub. Give it a Slack message URL and it reads the thread,
-  extracts the PR links, and replies the verdict there.
-- **`/review-pr-watch [owner/repo]`** — one watch cycle for `/review-pr`: finds
-  PRs where you're a requested reviewer or whose head advanced since your last
-  review, and runs the next round. Wrap in `/loop`.
-- **`/review-pr-slack-watch #channel`** — one watch cycle for `/review-pr-slack`;
-  wrap in `/loop` to run continuously (see **Loop mode**).
+---
 
-**Reactions = PR state.** On the trigger message: 👀 review in progress →
-✅ approved / 🔧 changes requested. This doubles as the loop's state machine, so
-the watcher needs no external database.
+## Table of contents
 
-- **review-memory** — after each review the panel records findings + how
-  developers responded (resolved / deferred / disputed / clarified) into a
-  committed `.review-memory/` folder in the repo, and recalls them next round so
-  it stops re-raising dismissed findings and checks that deferred fixes landed.
-  Humans can also drop **sticky watch items** (`memory.py note`) — "verify this
-  complex logic in future PRs" — that resurface in every future review of that
-  area until closed.
-- **Auto-improvement, safely** — a SessionStart hook surfaces findings that keep
-  getting the same developer verdict and nudges you to codify them into
-  CLAUDE.md / an ADR. Recording and recall are automatic; **promoting a rule is a
-  human decision** — the bot never rewrites its own rules from unreviewed replies.
-  Memory never overrides CLAUDE.md / ADRs.
+- [What you get](#what-you-get)
+- [Quick start](#quick-start)
+- [Slack setup](#slack-setup)
+- [How it works (under the hood)](#how-it-works-under-the-hood)
+- [Commands](#commands)
+- [Loop / automation](#loop--automation)
+- [Review memory](#review-memory)
+- [Reactions = PR state](#reactions--pr-state)
+- [Guardrails & safety](#guardrails--safety)
+- [Updating (for the team)](#updating-for-the-team)
+- [Requirements](#requirements)
+- [Troubleshooting](#troubleshooting)
+- [Repo layout](#repo-layout)
 
-## Install — one click (marketplace)
+---
 
-Push this folder to a git repo your team can reach (it is its own marketplace —
-`.claude-plugin/marketplace.json` is included), then each teammate runs, in
-Claude Code:
+## What you get
+
+| Command | Delivers to | Use it for |
+|---|---|---|
+| `/review-pr <PR_URL>` | inline comments on the PR | a normal reviewer pass on one PR |
+| `/review-pr-slack <PR URLs \| Slack msg URL>` | an HTML report + a short Slack verdict | rich review without touching the PR; team visibility |
+| `/review-pr-watch [owner/repo]` | drives `/review-pr` in a loop | auto-review PRs you're requested on |
+| `/review-pr-slack-watch #channel` | drives `/review-pr-slack` in a loop | auto-review PRs posted in a channel |
+
+All of them run the **same 4-agent panel** and share the **same per-repo memory**.
+The two `*-watch` commands are one poll cycle each — wrap them in `/loop` to run
+continuously.
+
+---
+
+## Quick start
+
+### Option A — one-click (marketplace, recommended for teams)
+
+In Claude Code:
 
 ```
-/plugin marketplace add <your-org>/<repo>
+/plugin marketplace add NarekManukyan/pr-review-loop
 /plugin install pr-review-loop@pr-review-loop
 ```
 
-Updates later: `/plugin marketplace update pr-review-loop` then reinstall. Everyone
-tracks the same version; you ship an improvement once and the team gets it.
+Restart the session. On first start the plugin syncs its skills into
+`~/.claude/skills` and (best-effort, in the background) installs `graphify` for
+semantic recall.
 
-## Install — standalone (no marketplace)
+### Option B — standalone (no marketplace)
 
 ```bash
 unzip pr-review-loop.zip && ./pr-review-loop/install.sh
 ```
 
-Restart Claude Code. (The SessionStart auto-nudge only runs in the marketplace
-install; standalone users run `distill` by hand — see below.)
+This copies the commands + skills into `~/.claude`, installs `shiki` (report
+highlighting) and `graphify` (optional). Restart Claude Code.
 
-## Prerequisites
+---
 
-- **gh** CLI authenticated (or **glab** for GitLab).
-- **graphify** — adds a semantic recall layer over the memory corpus. The
-  installer (and, for marketplace installs, a one-time background step on first
-  session) **auto-installs it** best-effort via uv / pipx / pip. If it can't be
-  installed on a given machine, deterministic JSONL recall still works — nothing
-  breaks. Marker file `~/.claude/.pr-review-loop-graphify-checked` stops retries;
-  delete it (or run `scripts/ensure-graphify.sh --force`) to retry.
+## Slack setup
 
-## Slack setup (for /review-pr-slack and the watcher)
-
-The Slack verdict message, report upload, and reactions post as you via a sender
-token — connect it once:
+Only needed for `/review-pr-slack` and the Slack watcher (message, report upload,
+and reactions post **as you**). Connect the sender token once:
 
 ```bash
 ~/.claude/skills/slack-send/install.sh
 ```
 
-Without it, review still works locally; only the Slack delivery/reactions need the token.
+Without it, reviews still run locally and `/review-pr` still posts inline — only
+the Slack delivery needs the token.
 
-## Loop mode
+---
 
-Run the watcher continuously over a channel — reactions are the state (unreacted
-PR = to-do, 👀 = in progress, ✅/🔧 = done), so it never re-reviews the same thing:
+## How it works (under the hood)
 
-**Slack channel** (report + verdict delivery):
+Every review, whichever command triggers it, runs the same pipeline:
+
 ```
-/loop 10m /review-pr-slack-watch #your-review-channel
+trigger ─▶ recall memory ─▶ 4-agent panel ─▶ report ─▶ deliver ─▶ record memory
+             ▲                                                        │
+             └───────────────── next round ◀──────────────────────────┘
 ```
-Each cycle: reviews **new** PRs (message with a PR URL and no state reaction), and
-picks up **next rounds** (a reviewed PR whose author replied asking to re-review —
-the thread replies feed the re-review and memory recall applies).
 
-**Inline PR review** (posts on the PR itself):
+1. **Recall memory** — before reviewing, the panel loads this repo's past outcomes
+   and any human watch items (see [Review memory](#review-memory)). This is
+   calibration only; `CLAUDE.md` / ADRs still rank above it.
+2. **4-agent panel** — four reviewers run in parallel:
+   - **A – architecture & patterns** (layering, DI, state management)
+   - **B – correctness & edge cases** (logic, null-safety, races, error handling)
+   - **C – performance & quality** (rebuilds, complexity, naming, dead code)
+   - **D – build & analyze** (checks out the branch in an isolated worktree,
+     compiles + runs the analyzer; errors become blockers, warnings are counted)
+3. **Report** — findings are merged and de-duplicated (overlapping reviewers become
+   one thread with "+1" replies), tagged P0/P1/P2, with a copy-paste fix prompt.
+4. **Deliver** — inline (`/review-pr`) or an HTML report + Slack verdict
+   (`/review-pr-slack`).
+5. **Record memory** — findings + how the developer responded are written to a
+   committed `.review-memory/` folder, feeding the next round.
+
+Two loops sit on top:
+
+- **Next-round loop** — recording feeds recall, so round N+1 is aware of rounds 1…N.
+  What *kicks off* the next round differs by surface: a Slack thread reply, or a PR
+  re-request / new commits.
+- **Distill loop** — when a finding keeps getting the same developer verdict, a
+  SessionStart nudge suggests promoting it into `CLAUDE.md` / an ADR. A **human**
+  makes that change; the bot never edits its own rules.
+
+---
+
+## Commands
+
+### `/review-pr <PR_URL>`
+Full panel review of one PR, posting inline comments. Detects the review round from
+existing PR comments, recalls memory, records outcomes. This is the command a human
+runs manually and the one the PR watcher drives.
+
+### `/review-pr-slack <PR URLs | Slack message URL>`
+Same panel, but **never comments on the PR**. Produces:
+- a self-contained **HTML report** — GitHub-style diffs (only commented hunks),
+  syntax-highlighted, build status per PR, all findings threaded inline, and fix
+  prompts;
+- a short **Slack verdict message** — DM to the author, or a reply in the thread if
+  you pass a Slack message URL.
+
+Give it a **Slack message URL** and it reads the whole thread, extracts every PR
+link, reviews them, and replies the verdict there — the basis for the Slack watcher.
+
+### `/review-pr-watch [owner/repo]`
+One watch cycle for `/review-pr`. Finds PRs where you're a requested reviewer, skips
+any already reviewed at their current head commit, and runs the next round on the
+rest. See [Loop / automation](#loop--automation).
+
+### `/review-pr-slack-watch #channel`
+One watch cycle for `/review-pr-slack`. Scans a channel for PR links, reviews new
+ones, and picks up next rounds when the author replies. Reactions on each message
+track state.
+
+---
+
+## Loop / automation
+
+Wrap a watch command in `/loop`:
+
 ```
-/loop 10m /review-pr-watch
+/loop 10m /review-pr-watch                       # inline, PRs you're requested on
+/loop 10m /review-pr-slack-watch #code-review     # Slack, PRs posted in a channel
 ```
-Each cycle: finds PRs where you're a requested reviewer, skips any already reviewed
-at their current head, and runs the next round on the rest. A **next round fires
-automatically** when the developer pushes new commits or re-requests review — the
-head advances, so the PR is no longer "reviewed at this head". State is keyed by
-PR + head commit in review memory, so nothing is reviewed twice.
 
-Both are capped per cycle so they can't run away. In loop mode the interactive
-confirmation is skipped (the `/loop` is the standing authorization); all other
-guardrails stay.
+**How a next round is detected**
 
-## Why per-repo memory (not shared)
+- **PR watcher** — state is keyed by `PR number + head commit` in review memory. A
+  PR is reviewed **once per head**. The next round fires only when the developer
+  **pushes new commits** (head advances) or a **re-request produces a new head**.
+  A bare re-request with **no new commits is intentionally skipped** — nothing
+  changed to review.
+- **Slack watcher** — reactions are the state: no reaction = to-do, 👀 = in
+  progress, ✅/🔧 = done. A next round fires when the **author replies** in a
+  reviewed thread asking to re-review.
 
-The same command runs on different repos with different architectures — a MobX
-Flutter app and a BLoC Flutter app share a language but oppose each other's rules.
-Memory is therefore keyed to each repo's `.review-memory/` folder, aligned with
-that repo's own CLAUDE.md + ADRs, and never shared across repos. It only
-*calibrates* a review; every finding must still be provable against current code.
+Both watchers cap work per cycle (default 3 PRs) so a cycle can't run away; the next
+cycle continues. In loop mode the interactive confirmation is skipped — the `/loop`
+invocation is the standing authorization — but every other guardrail stays.
 
-## Promoting lessons (the human step)
+> **Tip:** point a new loop at a low-traffic test channel / a single test PR for the
+> first day to confirm detection and reactions behave before turning it on your main
+> review channel.
+
+---
+
+## Review memory
+
+A committed `.review-memory/` folder in each repo, written and read by
+`skills/review-memory/scripts/memory.py`.
+
+**Why per-repo, not shared:** the same command runs on repos with opposite
+architectures (a MobX app and a BLoC app share a language but not their rules). Memory
+is keyed to each repo — aligned with that repo's own `CLAUDE.md` + ADRs — and never
+shared across repos.
+
+**Authority hierarchy (never inverts):**
+1. `CLAUDE.md` + ADRs — authoritative, hand-written.
+2. `.review-memory/rules.md` — curated, human-approved distilled rules.
+3. `.review-memory/decisions.jsonl` — raw outcome log; calibrates confidence.
+
+Memory only *calibrates* a review — it cuts repeat-noise and honors prior deferrals.
+Every finding must still be provable against the current code.
+
+**What it stores & does**
+
+| Action | Command | Effect |
+|---|---|---|
+| recall | `memory.py recall . --area "<paths>"` | surfaces watch items + prior verdicts before reviewing |
+| record | `memory.py record . --input decisions.json` | logs this round's findings + developer responses |
+| watch item | `memory.py note . --area "<file>" --text "…"` | a sticky human "check this in future PRs" that resurfaces until closed |
+| close | `memory.py close . --signature "<sig>"` | marks a watch item checked |
+| distill | `memory.py distill .` | lists recurring findings (candidates to codify) |
+| ripe | `memory.py ripe .` | findings with a consistent verdict, ready to codify (used by the nudge) |
+
+**Watch items** are the "important, don't forget" channel: flag complex logic that
+wasn't fully verified and it shows at the top of every future review touching that
+area — across PRs, not just rounds — until a human closes it.
+
+**Promotion is human.** Recurring, confirmed lessons get moved into `CLAUDE.md` / a
+new ADR via a normal PR. Once codified there, the memory bullet can be removed. The
+bot never rewrites its own rules from unreviewed replies.
+
+`graphify`, if installed, adds a semantic recall layer over the corpus; without it,
+deterministic JSONL recall works fine.
+
+---
+
+## Reactions = PR state
+
+On the Slack trigger message (`/review-pr-slack` and the Slack watcher):
+
+| Emoji | Meaning |
+|---|---|
+| 👀 `eyes` | review in progress |
+| ✅ `white_check_mark` | approved (all PRs, no P0/P1) |
+| 🔧 `wrench` | changes requested (any Request-Changes / broken build / open P0-P1) |
+
+This doubles as the Slack watcher's state machine — it reads the reactions and never
+reviews the same message twice.
+
+---
+
+## Guardrails & safety
+
+- **No surprise comments.** `/review-pr-slack` and both watchers never write on
+  GitLab/GitHub. `/review-pr` posts inline — that's a normal reviewer action.
+- **FACT vs ASSUMPTION.** Only findings provable from the code are posted; the rest
+  become questions.
+- **Generated files skipped** (`*.g.dart`, `*.freezed.dart`, lockfiles, etc.; extends
+  from the repo's `CLAUDE.md`).
+- **Per-cycle caps** on loops; interactive confirmation only skipped inside `/loop`.
+- **Memory never overrides `CLAUDE.md`/ADRs** and never self-edits its rules.
+
+---
+
+## Updating (for the team)
+
+You ship an improvement once; teammates pull it:
 
 ```bash
-python3 ~/.claude/skills/review-memory/scripts/memory.py distill .   # candidates
-python3 ~/.claude/skills/review-memory/scripts/memory.py ripe .      # ready-to-codify
+# maintainer
+cd <plugin checkout> && git add -A && git commit -m "…" && git push
+
+# teammates, in Claude Code
+/plugin marketplace update pr-review-loop
+/plugin install pr-review-loop@pr-review-loop
 ```
 
-Move a confirmed lesson into CLAUDE.md / a new ADR via a normal PR. Once codified
-there, its `.review-memory/rules.md` bullet can be removed.
+---
 
-## Contents
+## Requirements
+
+- **Claude Code** with plugin support.
+- **gh** CLI authenticated (GitHub) or **glab** (GitLab).
+- **Slack**: the sender token (`slack-send/install.sh`) — only for the Slack command
+  and watcher.
+- **node + npm** (optional): bakes syntax highlighting into the HTML report; without
+  it the report falls back to CDN highlighting (fine in a browser, not in Slack's
+  preview).
+- **graphify** (optional): semantic review-memory recall; auto-installed best-effort.
+- **macOS / Linux** for the hooks and shell scripts. On native Windows, use WSL.
+
+---
+
+## Troubleshooting
+
+- **`/review-pr-slack` can't post** → run `~/.claude/skills/slack-send/install.sh` to
+  connect the token.
+- **Report isn't highlighted in Slack preview** → `node`/`npm` missing at install
+  time; re-run the installer, or open the HTML in a browser.
+- **graphify not installed** → harmless; JSONL recall still works. Retry with
+  `~/.claude/skills/.../scripts/ensure-graphify.sh --force` (or `pipx install graphifyy`).
+- **Watcher re-reviews nothing** → check `gh auth status` / `glab auth status`, and
+  that you're actually a requested reviewer on an open PR.
+- **Nudge never appears** → it only fires when a finding has recurred with a
+  consistent verdict; run `memory.py distill .` to see candidates manually.
+
+---
+
+## Repo layout
 
 ```
 pr-review-loop/
-├── .claude-plugin/
-│   ├── plugin.json         # plugin manifest + SessionStart hook
-│   └── marketplace.json    # makes this repo its own marketplace
-├── commands/review-pr.md   # the /review-pr panel command
-├── skills/review-memory/   # the learning engine (recall/record/distill/ripe)
-├── hooks/ensure-and-nudge.sh
-├── install.sh              # standalone (no-marketplace) installer
-└── README.md
+├── .claude-plugin/{plugin,marketplace}.json   # manifests (repo is its own marketplace)
+├── commands/
+│   ├── review-pr.md              # /review-pr
+│   ├── review-pr-watch.md        # /review-pr-watch
+│   └── review-pr-slack-watch.md  # /review-pr-slack-watch
+├── payload/skills/               # synced to ~/.claude/skills on install/first-run
+│   ├── review-memory/            # the learning engine (recall/record/note/distill)
+│   ├── review-pr-slack/          # panel → HTML report + Slack verdict
+│   └── slack-send/               # msg / report upload / reactions / channel watch
+├── hooks/ensure-and-nudge.sh     # SessionStart: sync skills, install graphify, distill nudge
+├── scripts/ensure-graphify.sh    # best-effort graphify installer
+└── install.sh                    # standalone (no-marketplace) installer
 ```
