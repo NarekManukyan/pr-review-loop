@@ -321,6 +321,35 @@ def cmd_record(root, args):
 
 
 # --------------------------------------------------------------------------- #
+def cmd_mark_reviewed(root, args):
+    """Record that a PR was reviewed at a given commit (watcher dedup state)."""
+    d = mem_dir(root)
+    if not os.path.isdir(d):
+        cmd_init(root, args)
+    rec = {'kind': 'review-run', 'pr': str(args.pr), 'commit': args.commit,
+           'round': args.round, 'date': args.date or ''}
+    with open(os.path.join(d, DEC), 'a', encoding='utf-8') as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + '\n')
+    print(f"marked PR {args.pr} reviewed at {args.commit[:10]}")
+
+
+def cmd_was_reviewed(root, args):
+    """Exit 0 if PR was already reviewed at this commit, else exit 1.
+
+    Lets a watcher skip PRs it has already handled — so it only re-reviews when
+    the head advances (new commits) or a re-request produces a fresh commit.
+    """
+    want_pr, want_commit = str(args.pr), args.commit
+    for e in load_decisions(root):
+        if (e.get('kind') == 'review-run' and str(e.get('pr')) == want_pr
+                and e.get('commit') == want_commit):
+            print("yes")
+            return
+    print("no")
+    sys.exit(1)
+
+
+# --------------------------------------------------------------------------- #
 def cmd_distill(root, args):
     """Surface recurring signatures as candidate rules for HUMAN promotion."""
     decisions = load_decisions(root)
@@ -400,9 +429,16 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)
-    for name in ('init', 'recall', 'record', 'note', 'close', 'distill', 'ripe', 'stats'):
+    for name in ('init', 'recall', 'record', 'note', 'close',
+                 'mark-reviewed', 'was-reviewed', 'distill', 'ripe', 'stats'):
         p = sub.add_parser(name)
         p.add_argument('root')
+        if name in ('mark-reviewed', 'was-reviewed'):
+            p.add_argument('--pr', required=True)
+            p.add_argument('--commit', required=True)
+            if name == 'mark-reviewed':
+                p.add_argument('--round', type=int, default=1)
+                p.add_argument('--date', default='')
         if name == 'recall':
             p.add_argument('--area', default='')
             p.add_argument('--max', type=int, default=12)
@@ -433,6 +469,7 @@ def main():
     root = os.path.abspath(args.root)
     {'init': cmd_init, 'recall': cmd_recall, 'record': cmd_record,
      'note': cmd_note, 'close': cmd_close,
+     'mark-reviewed': cmd_mark_reviewed, 'was-reviewed': cmd_was_reviewed,
      'distill': cmd_distill, 'ripe': cmd_ripe, 'stats': cmd_stats}[args.cmd](root, args)
 
 

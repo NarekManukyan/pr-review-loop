@@ -14,8 +14,11 @@ one-click Claude Code plugin for the team.
   status, fix prompts) + a short **verdict message** posted to Slack. Never
   comments on GitLab/GitHub. Give it a Slack message URL and it reads the thread,
   extracts the PR links, and replies the verdict there.
-- **`/review-pr-slack-watch #channel`** — one watch cycle; wrap in `/loop` to run
-  continuously (see **Loop mode**).
+- **`/review-pr-watch [owner/repo]`** — one watch cycle for `/review-pr`: finds
+  PRs where you're a requested reviewer or whose head advanced since your last
+  review, and runs the next round. Wrap in `/loop`.
+- **`/review-pr-slack-watch #channel`** — one watch cycle for `/review-pr-slack`;
+  wrap in `/loop` to run continuously (see **Loop mode**).
 
 **Reactions = PR state.** On the trigger message: 👀 review in progress →
 ✅ approved / 🔧 changes requested. This doubles as the loop's state machine, so
@@ -83,15 +86,27 @@ Without it, review still works locally; only the Slack delivery/reactions need t
 Run the watcher continuously over a channel — reactions are the state (unreacted
 PR = to-do, 👀 = in progress, ✅/🔧 = done), so it never re-reviews the same thing:
 
+**Slack channel** (report + verdict delivery):
 ```
 /loop 10m /review-pr-slack-watch #your-review-channel
 ```
-
 Each cycle: reviews **new** PRs (message with a PR URL and no state reaction), and
 picks up **next rounds** (a reviewed PR whose author replied asking to re-review —
-the thread replies feed the re-review and memory recall applies). Capped per cycle
-so it can't run away. In loop mode the interactive send-confirmation is skipped
-(the `/loop` is the standing authorization); all other guardrails stay.
+the thread replies feed the re-review and memory recall applies).
+
+**Inline PR review** (posts on the PR itself):
+```
+/loop 10m /review-pr-watch
+```
+Each cycle: finds PRs where you're a requested reviewer, skips any already reviewed
+at their current head, and runs the next round on the rest. A **next round fires
+automatically** when the developer pushes new commits or re-requests review — the
+head advances, so the PR is no longer "reviewed at this head". State is keyed by
+PR + head commit in review memory, so nothing is reviewed twice.
+
+Both are capped per cycle so they can't run away. In loop mode the interactive
+confirmation is skipped (the `/loop` is the standing authorization); all other
+guardrails stay.
 
 ## Why per-repo memory (not shared)
 

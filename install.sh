@@ -34,6 +34,7 @@ echo "Done. Restart Claude Code (new session)."
 echo
 echo "Commands:"
 echo "  /review-pr <PR_URL>                     panel review + review memory (inline, this repo)"
+echo "  /review-pr-watch [owner/repo]           one watch cycle for re-review requests (wrap in /loop)"
 echo "  /review-pr-slack <PR_URLs | slack-msg>  panel review -> HTML report + Slack verdict"
 echo "  /review-pr-slack-watch #channel         one watch cycle (wrap in /loop to run continuously)"
 echo
