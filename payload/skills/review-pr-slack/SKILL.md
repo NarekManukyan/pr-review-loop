@@ -25,7 +25,7 @@ When the trigger is a **channel message** (a Slack message URL, or watch mode �
 |---|---|---|
 | 👀 `eyes` | review in progress | set at review start (before the panel runs) |
 | ✅ `white_check_mark` | approved | on deliver, if every MR verdict is Approve / Approve-with-minor-fixes and no P0/P1 remain |
-| 🔧 `wrench` | changes requested | on deliver, if any MR is Request Changes (or a build is broken / any P0/P1 open) |
+| 🔧 `wrench` | changes requested | on deliver, if any MR is Request Changes (or a build is broken / merge conflicts / any P0/P1 open) |
 
 `react.sh state <channel> <anchor_ts> <emoji>` clears prior state emojis and sets one, so transitions are clean (👀 → ✅/🔧). Skip reactions for the pure-DM case (no channel anchor message).
 
@@ -62,7 +62,7 @@ Input is either (a) MR/PR URLs directly, or (b) **a Slack message URL** — the 
 
 For GitLab use `glab api` (already authenticated); for GitHub use `gh`.
 
-Per MR: metadata (title, author name+username, source/target branch, state, head SHA), then diffs and full files into the scratchpad:
+Per MR: metadata (title, author name+username, source/target branch, state, head SHA, **conflict state** — `has_conflicts` / `merge_status` on GitLab; `mergeable` / `mergeStateStatus` on GitHub), then diffs and full files into the scratchpad:
 
 ```bash
 glab api "projects/<url-encoded-path>/merge_requests/<N>"          # metadata
@@ -123,6 +123,14 @@ Detect the repo's stack and prefer its **own linter thresholds** so the review a
 
 Cite `method + file:line + measured value vs threshold`. Don't flag code under the thresholds just because it looks busy.
 
+### Merge-conflict check (blocks approval)
+
+Check whether the PR/MR **conflicts with its target branch** — a conflicting PR must never be approved:
+- GitLab → `glab api projects/<url-encoded-path>/merge_requests/<N>` and read `has_conflicts` (bool) / `merge_status` (`cannot_be_merged` = conflict).
+- GitHub → `gh pr view <N> --json mergeable,mergeStateStatus` (`mergeable == "CONFLICTING"`, or `mergeStateStatus == "DIRTY"`).
+
+If it conflicts: report a **P1 blocker** — "merge conflicts with `<target>` — rebase/merge and resolve before merging" — and the verdict **cannot be Approve**; use Request Changes / "Blocked — resolve conflicts". If clean, note "no conflicts".
+
 - **C — Performance & Code Quality**: rebuilds, per-frame/per-keystroke work, complexity, naming, localization/design-system violations, dead code
 - **D — Build & Analyze**: verifies each open MR actually compiles and passes static analysis. Per MR: fetch the source branch, create an isolated `git worktree` (never touch the user's working tree), install deps and run the stack's compile/analyze step (Flutter: `flutter pub get` + codegen if needed + `dart analyze`; Node: install + `tsc`/build; Go: `go build ./... && go vet`), then remove the worktree. Compile/analyzer **errors** → P0 findings with the tool output quoted; **warning/info counts** → reported per MR for the verdict. Skip already-merged MRs.
 
@@ -148,6 +156,7 @@ Write `findings.json` (all entries, sequential `id` field, summaries included) a
           "verdict": "✅ Approve | ⚠️ Approve with minor fixes | 🔄 Request Changes",
           "build": {"compiles": true, "analyzer_errors": 0, "analyzer_warnings": 12,
                      "tool": "dart analyze", "notes": ""},
+          "conflicts": false,  "merge_status": "can_be_merged",
           "discussion": [{"by": "Davit", "quote": "this is intentional, backend clamps it",
                            "resolution": "deferred",
                            "response": "Accepted as deferred — add a TODO + ticket before merge."}],
@@ -157,7 +166,9 @@ Write `findings.json` (all entries, sequential `id` field, summaries included) a
 
 On re-reviews, fill `discussion` per MR from the reviewers' reply resolutions (deduped): each entry renders in the report as a "💬 Thread follow-ups" block in that MR's overview. Resolutions: `resolved` (code proves the fix), `deferred` (author said later/out-of-scope — state the guardrail asked for), `disputed` (reviewer still disagrees — state why, cite code), `clarified` (author was right — finding withdrawn, say so plainly).
 
-Verdict policy: build broken or any P0/P1 → 🔄 Request Changes; P2-only → ⚠️ Approve with minor fixes; clean → ✅ Approve. Append the build result to the verdict string, e.g. `🔄 Request Changes — build ❌ (2 analyzer errors)` or `⚠️ Approve with minor fixes — build ✅, 12 warnings`. Already-merged MRs: note "fold into follow-up"; build check skipped.
+Set `conflicts` per MR from step 1's fetch (`has_conflicts` / `merge_status` on GitLab, `mergeable`/`mergeStateStatus` on GitHub). The report shows it as a **Conflicts column**.
+
+Verdict policy: **merge conflicts OR** build broken OR any P0/P1 → 🔄 Request Changes; P2-only → ⚠️ Approve with minor fixes; clean → ✅ Approve. **A conflicting MR is never Approve** — its verdict is `🔄 Request Changes — conflicts with <target>` (also add a P1 conflict finding). Append the build result too, e.g. `🔄 Request Changes — build ❌ (2 analyzer errors)`. Already-merged MRs: note "fold into follow-up"; build + conflict checks skipped.
 
 Each MR gets a `fix_prompt`: a self-contained prompt the developer pastes into Claude Code. **Use the full template in `references/reviewer-prompts.md` § Fix-prompt template verbatim** — it forces the fixer to (1) read CLAUDE.md + all ADRs and the surrounding code first, (2) fix the root cause and explicitly forbids cosmetic non-fixes (adding comments, reformatting, suppressing lints, swallowing errors, deleting code/tests), (3) verify with codegen/format/analyze/tests and explain each fix against a rule/ADR. Every finding line must include `file:line` + the required end state, not just the symptom.
 
@@ -222,7 +233,7 @@ Report the verdict message link back to the user.
 **Step 6c — set the verdict reaction** (channel anchor only): swap 👀 for the outcome emoji so the channel reflects PR state:
 
 ```bash
-# emoji = white_check_mark if all approved & no P0/P1; else wrench
+# emoji = white_check_mark if all approved & no P0/P1 & no conflicts; else wrench
 ~/.claude/skills/slack-send/scripts/react.sh state <channel> <anchor_ts> <emoji>
 ```
 

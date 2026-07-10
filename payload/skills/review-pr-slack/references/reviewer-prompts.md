@@ -45,6 +45,14 @@ Detect the repo's stack and prefer its **own linter thresholds** so the review a
 
 Cite `method + file:line + measured value vs threshold`. Don't flag code under the thresholds just because it looks busy.
 
+### Merge-conflict check (blocks approval)
+
+Check whether the PR/MR **conflicts with its target branch** — a conflicting PR must never be approved:
+- GitLab → `glab api projects/<url-encoded-path>/merge_requests/<N>` and read `has_conflicts` (bool) / `merge_status` (`cannot_be_merged` = conflict).
+- GitHub → `gh pr view <N> --json mergeable,mergeStateStatus` (`mergeable == "CONFLICTING"`, or `mergeStateStatus == "DIRTY"`).
+
+If it conflicts: report a **P1 blocker** — "merge conflicts with `<target>` — rebase/merge and resolve before merging" — and the verdict **cannot be Approve**; use Request Changes / "Blocked — resolve conflicts". If clean, note "no conflicts".
+
 - Also flag any complex function/calculation with an explanation of what it does
   and whether logic is correct.
 

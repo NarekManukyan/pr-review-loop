@@ -3,6 +3,16 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.7.0
+
+Added
+- Merge-conflict detection in every reviewer: checks the PR/MR against its target
+  (`has_conflicts`/`merge_status` on GitLab, `mergeable`/`mergeStateStatus` on
+  GitHub). A conflicting PR is **never approved** — verdict is forced to Request
+  Changes with a P1 "resolve conflicts" finding. The HTML report gains a
+  **Conflicts column** (⚠ conflicts / ✓ no conflicts) and the Slack reaction goes
+  🔧 on conflict.
+
 ## 1.6.0
 
 Changed

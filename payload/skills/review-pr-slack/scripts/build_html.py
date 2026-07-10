@@ -57,6 +57,21 @@ def build_badge(m, short=False):
     e = b.get('analyzer_errors', '?')
     return f"<span class='bchip bfail'>build ❌ · {e} errors</span>"
 
+def conflict_badge(m):
+    """Merge-conflict state from meta['<mr>']['conflicts'] (bool) or 'merge_status'."""
+    c = m.get('conflicts')
+    ms = (m.get('merge_status') or '').lower()
+    if c is True or ms in ('cannot_be_merged', 'conflict', 'dirty', 'conflicting'):
+        return "<span class='bchip bfail'>⚠ conflicts</span>"
+    if c is False or ms in ('can_be_merged', 'clean', 'mergeable', 'unchecked'):
+        return "<span class='bchip bok'>✓ no conflicts</span>"
+    return "<span class='bchip bskip'>conflicts unknown</span>"
+
+def has_conflicts(m):
+    c = m.get('conflicts')
+    ms = (m.get('merge_status') or '').lower()
+    return c is True or ms in ('cannot_be_merged', 'conflict', 'dirty', 'conflicting')
+
 def esc(s): return html.escape(str(s or ''))
 
 def md(s):
@@ -259,6 +274,7 @@ def render_mr(mr):
         <div class="mr-meta">
           <span class="state" style="background:{state_badge[0]}">{state_badge[1]}</span>
           {build_badge(m)}
+          {conflict_badge(m)}
           <span>{esc(m['author'])} wants to merge <code>{esc(m['source'])}</code> → <code>{esc(m['target'])}</code></span>
         </div>
       </div>
@@ -337,9 +353,11 @@ def overview_table():
             f"<td>{esc(m['title'])}</td><td>{esc(m['state'])}</td>"
             f"<td style='text-align:center'>{p0}</td><td style='text-align:center'>{p1}</td>"
             f"<td style='text-align:center'>{p2}</td><td>{build_badge(m)}</td>"
+            f"<td>{conflict_badge(m)}</td>"
             f"<td>{esc(m.get('verdict',''))}</td></tr>")
     return ("<table class='ovtbl'><tr><th>MR</th><th>Title</th><th>State</th>"
-            "<th>P0</th><th>P1</th><th>P2</th><th>Build</th><th>Verdict</th></tr>" + ''.join(rows) + "</table>")
+            "<th>P0</th><th>P1</th><th>P2</th><th>Build</th><th>Conflicts</th><th>Verdict</th></tr>"
+            + ''.join(rows) + "</table>")
 TITLE = meta.get('title', 'MR Review — Panel of 3')
 SUBTITLE = meta.get('subtitle', 'Reviewer A: Architecture & Patterns · B: Correctness & Edge Cases · '
                                 'C: Performance & Code Quality · Generated files excluded.')
