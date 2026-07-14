@@ -3,6 +3,14 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.7.1
+
+Added
+- Reviewer D (Build & Analyze) now cleans up after itself: after compiling/analyzing
+  in its throwaway worktree it runs the stack's clean (`flutter clean` / `dart clean`
+  / `go clean`) before removing the worktree, so no build artifacts linger and the
+  teardown can't be blocked. Never touches the user's real checkout.
+
 ## 1.7.0
 
 Added

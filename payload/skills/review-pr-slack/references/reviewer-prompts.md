@@ -119,7 +119,15 @@ Per MR:
      repo's build script.
    - Go: go build ./... && go vet ./...
    - Otherwise: use the repo's documented build command (CLAUDE.md, Makefile, CI config).
-4. git worktree remove --force <scratchpad>/build-mr<N>
+4. **Clean up the build in the worktree BEFORE removing it** — so nothing is left behind and the worktree removal can't be blocked by build artifacts. Match the stack:
+   - Flutter: `flutter clean`
+   - Dart (non-Flutter): `dart clean` (or `rm -rf .dart_tool build`)
+   - Node/TS: nothing extra — `node_modules` lives inside the worktree and is deleted with it
+   - Go: `go clean` (module build output only; do NOT `go clean -cache` — that wipes the shared build cache and slows every future build)
+   - Gradle/Android (only if you actually built it): `./gradlew clean`
+5. Remove the worktree: `git worktree remove --force <scratchpad>/build-mr<N>` then `git worktree prune`. If removal fails, `rm -rf <scratchpad>/build-mr<N>` as a fallback, then `git worktree prune`.
+
+Never run these against the user's real checkout — only inside the throwaway `<scratchpad>/build-mr<N>` worktree.
 
 Classify output: compile/analyzer ERRORS are P0 findings (quote the exact tool
 output, file:line). Warnings and infos are counted, not itemized — unless a
