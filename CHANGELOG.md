@@ -3,6 +3,16 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.8.1
+
+Fixed
+- **Installer no longer creates duplicate skills.** `install.sh` used to back up an
+  existing skill in place to `~/.claude/skills/<name>.bak` — but that dir still contains
+  a `SKILL.md`, so Claude Code registered it as a *second* skill (e.g. `slack-send` **and**
+  `slack-send.bak`). Backups now go to `~/.claude/.pr-review-loop-backups/` (outside the
+  skills path), and the installer removes any stale `*.bak` skill dirs left by older
+  versions. Fixes the "same skill appears twice" duplication.
+
 ## 1.8.0
 
 Stack-aware review engine — biggest change since the panel shipped. Designed from an
