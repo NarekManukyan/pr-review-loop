@@ -21,4 +21,8 @@ Then:
    - missing skills/commands on a marketplace install usually resolve after a
      session restart (the SessionStart hook syncs them); on a standalone install,
      re-run `install.sh`.
-4. End with a one-line verdict: ready to use, or the single most important thing to fix.
+4. Note the **"review engine would load: …"** line — it shows which stack lens pack(s)
+   the `review-core` resolver would apply in the current repo (or universal-only
+   fallback). If `review-core` itself shows missing, reviews still run but only with
+   universal lenses until it syncs (restart, or re-run `install.sh`).
+5. End with a one-line verdict: ready to use, or the single most important thing to fix.

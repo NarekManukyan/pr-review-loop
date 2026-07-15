@@ -24,7 +24,7 @@ fi
 
 echo
 echo "skills (~/.claude/skills):"
-for s in review-memory review-pr-slack slack-send; do
+for s in review-core review-memory review-pr-slack slack-send; do
   if [ -d "$HOME/.claude/skills/$s" ]; then pass "$s installed"; else warn "$s missing (re-run install.sh, or restart to let the SessionStart hook sync it)"; fi
 done
 MEM="$HOME/.claude/skills/review-memory/scripts/memory.py"
@@ -60,6 +60,26 @@ if [ -d "./.review-memory" ]; then
 else
   warn "no .review-memory/ yet — created on first review, or run: python3 $MEM config . --init"
 fi
+# stack resolver preview — which lens pack(s) the review engine would load here
+detect_stack() {
+  local base="" packs=""
+  if [ -f pubspec.yaml ]; then
+    base="Flutter"; packs="_base-flutter"
+    grep -qE '^\s*(flutter_bloc|bloc):' pubspec.yaml 2>/dev/null && packs="$packs + flutter-bloc"
+    grep -qE '^\s*(mobx|flutter_mobx):' pubspec.yaml 2>/dev/null && packs="$packs + flutter-mobx"
+    grep -qE '^\s*(riverpod|flutter_riverpod|hooks_riverpod):' pubspec.yaml 2>/dev/null && packs="$packs + flutter-riverpod"
+    grep -qE '^\s*provider:' pubspec.yaml 2>/dev/null && packs="$packs + flutter-provider"
+  elif [ -f go.mod ]; then base="Go"; packs="go-postgres"
+  elif [ -f package.json ]; then
+    base="JS/TS"
+    if grep -q '"@nestjs/core"' package.json 2>/dev/null; then packs="nestjs"
+    elif grep -qE '"(next|react)"' package.json 2>/dev/null; then packs="react (stub)"
+    else packs="universal-only"; fi
+  elif [ -f pyproject.toml ] || [ -f requirements.txt ] || [ -f setup.cfg ]; then base="Python"; packs="python (stub)"
+  fi
+  if [ -n "$base" ]; then pass "review engine would load: $base → $packs"; else warn "no known manifest here — review engine falls back to universal-only"; fi
+}
+detect_stack
 
 echo
 echo "Legend: PASS = ready · WARN = optional/only needed for some features · FAIL = fix before use."

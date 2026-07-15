@@ -95,46 +95,42 @@ python3 ~/.claude/skills/review-memory/scripts/memory.py note <repo-root> \
   --by "<author>" --area "<file/paths>" --title "<short>" --text "<the concern>"
 ```
 
-### 1c. Detect the stack
+### 1c. Resolve the stack (review-core engine)
 
-Determine the repo's stack from its manifest (`pubspec.yaml` → Flutter/Dart, `package.json` → JS/TS + framework, `go.mod` → Go, `pyproject.toml` → Python, `*.csproj` → .NET…). Use it to fill `<stack>` in the persona prompts and to pick stack-appropriate checks: the three personas keep their lenses (architecture · correctness · performance/quality) but apply the detected stack's idioms + the repo's `CLAUDE.md`/linter — not Flutter's by default. Reviewer D already auto-detects the stack for its compile/analyze step.
+The review brain is the shared **`review-core`** engine
+(`~/.claude/skills/review-core/`). Follow `review-core/references/resolver.md` on the
+repo root: detect the base stack + library overlays and load the matching
+`lenses/*.md` on top of the universal lenses. Record the one-line result to inject into
+the persona prompts, e.g. `Stack: Flutter · packs: _base-flutter + flutter-mobx · repo
+rules: CLAUDE.md, analysis_options.yaml, .review-memory`. Unknown stack →
+**universal-only** (still a full review). This supplies the stack-appropriate idioms —
+Go/Postgres, NestJS, Flutter-BLoC/MobX, … — instead of a hardcoded Flutter checklist.
 
 ### 2. Run the 4-agent panel
 
-Spawn four agents **in parallel** (Agent tool, `run_in_background: true`):
+Spawn four agents **in parallel** (Agent tool, `run_in_background: true`). Personas are
+defined in `review-core/references/personas.md`; each applies the universal lenses
+(`universal-lenses.md`, incl. complexity U11 + merge-conflict-via-`git merge-tree` U9)
+plus the stack `lenses/*.md` the resolver loaded:
 
-- **A — Architecture & Patterns**: layering, BLoC/state-management correctness, DI, separation of concerns
-- **B — Correctness & Edge Cases**: logic bugs, null safety, async/races, error handling, hardcoded placeholders
-### Complexity check (auto-adapt to the repo's stack)
+- **A — Architecture & Patterns**
+- **B — Correctness & Edge Cases**
+- **C — Performance & Code Quality**
+- **D — Build & Analyze** — CI parity + reachability. Mirrors the repo's **real CI**
+  (reads `.gitlab-ci.yml`/`.github/workflows`, runs its exact lint/test/build incl.
+  formatter gates and `//go:build` tags — not a generic build), greps the composition
+  root for unwired new code, checks head pipeline status, all in an isolated `git
+  worktree` cleaned before removal (never the user's checkout). Full step list in
+  `personas.md`.
 
-Detect the repo's stack and prefer its **own linter thresholds** so the review agrees with the team's tooling; fall back to per-language defaults when there is no config. Always cite the measured value vs the threshold so it is a FACT, not an opinion.
-
-**Read the repo's thresholds first (use these when present):**
-- Dart / Flutter → `analysis_options.yaml` (DCM `cyclomatic-complexity`, `maximum-nesting-level`, `widgets-nesting-level`)
-- JS / TS → `.eslintrc*` / `eslint.config.*` (`complexity`, `max-depth`)
-- Go → `.golangci.yml` (`gocyclo` / `cyclop`, `nestif`)
-- Python → `setup.cfg` / `.flake8` / `pyproject.toml` (`max-complexity`)
-- .NET / other → the repo's analyzer / editorconfig ruleset
-
-**Defaults when no config is found:**
-- **Cyclomatic complexity > 15–20** (McCabe "high"; DCM & ESLint default 20) → **P1** "excessive complexity — split into smaller functions." Count decision points (`if`/`else`, `switch` cases, loops, `&&`/`||`, `?:`, `catch`, guards) and state the number.
-- **Control-flow nesting depth > 4–5** (ESLint `max-depth` 4, DCM `maximum-nesting-level` 5) → flag; flatten with guard clauses / early returns / extraction. **P2**, or **P1** if also over the complexity threshold.
-- **UI component nesting — frontend/UI code only** (Flutter `build()`, React / Vue / Svelte component trees): depth **> 10** (DCM Widgets Nesting Level ≤ 10) → flag; extract named sub-components. **Backend / data / infra code has no build method — skip this rule there.** Component depth ≤ 10 is normal.
-
-Cite `method + file:line + measured value vs threshold`. Don't flag code under the thresholds just because it looks busy.
-
-### Merge-conflict check (blocks approval)
-
-Check whether the PR/MR **conflicts with its target branch** — a conflicting PR must never be approved:
-- GitLab → `glab api projects/<url-encoded-path>/merge_requests/<N>` and read `has_conflicts` (bool) / `merge_status` (`cannot_be_merged` = conflict).
-- GitHub → `gh pr view <N> --json mergeable,mergeStateStatus` (`mergeable == "CONFLICTING"`, or `mergeStateStatus == "DIRTY"`).
-
-If it conflicts: report a **P1 blocker** — "merge conflicts with `<target>` — rebase/merge and resolve before merging" — and the verdict **cannot be Approve**; use Request Changes / "Blocked — resolve conflicts". If clean, note "no conflicts".
-
-- **C — Performance & Code Quality**: rebuilds, per-frame/per-keystroke work, complexity, naming, localization/design-system violations, dead code
-- **D — Build & Analyze**: verifies each open MR actually compiles and passes static analysis. Per MR: fetch the source branch, create an isolated `git worktree` (never touch the user's working tree), install deps and run the stack's compile/analyze step (Flutter: `flutter pub get` + codegen if needed + `dart analyze`; Node: install + `tsc`/build; Go: `go build ./... && go vet`), **clean the build** (Flutter: `flutter clean`; Dart: `dart clean`; Go: `go clean`; Node: n/a), then remove the worktree (`git worktree remove --force` + `git worktree prune`). Compile/analyzer **errors** → P0 findings with the tool output quoted; **warning/info counts** → reported per MR for the verdict. Skip already-merged MRs.
-
-Use the prompt templates in `references/reviewer-prompts.md` verbatim, substituting paths and MR context. When `thread-context.md` exists (re-review), include its path in every reviewer prompt with the instructions from § Developer replies. Reviewers A–C return a JSON array of findings `{mr, file, line, severity: P0|P1|P2, reviewer, category, title, body, snippet}` plus one `{mr, reviewer, summary}` per MR; on re-reviews they additionally return reply resolutions `{mr, reviewer, reply_to: "<dev quote>", resolution: "resolved|deferred|disputed|clarified", response: "..."}`. Reviewer D additionally returns per MR: `{mr, reviewer: "D", build: {compiles: bool, analyzer_errors: N, analyzer_warnings: N, analyzer_infos: N, tool: "dart analyze", notes: "..."}}`.
+Build every persona prompt from the **common context block** in
+`references/reviewer-prompts.md` (it loads personas.md + universal-lenses.md + the
+loaded packs + repo CLAUDE.md/ADRs). Fill `<list>` with the resolver's loaded packs.
+When `thread-context.md` exists (re-review), append the § Developer replies block.
+Reviewers A–C return findings `{mr,file,line,severity,reviewer,category,title,body,snippet}`
++ one `{mr,reviewer,summary}` per MR (+ reply resolutions on re-reviews). Reviewer D
+returns the build record from `personas.md` (`compiles`, `analyzer_errors/warnings`,
+`ci_gates`, `pipeline`, reachability gaps).
 
 Agents may emit HTML entities (`&amp;`, `&lt;`) — run `html.unescape` on every string field before use.
 
@@ -313,7 +309,8 @@ Lead with results: totals, per-MR verdict + headline findings, the sent Slack me
 
 ## Additional Resources
 
-- **`references/reviewer-prompts.md`** — the three persona prompt templates, merge/dedupe rules, Slack target resolution & verdict-message template
+- **`review-core` skill** (`~/.claude/skills/review-core/`) — the shared review engine: the resolver (stack → lens packs), personas A/B/C/D, universal lenses U1–U12, and the per-stack `lenses/*.md`. This is where review quality is defined; this skill only adds Slack/HTML delivery on top.
+- **`references/reviewer-prompts.md`** — delivery-only scaffolding: the common context block (which loads review-core), merge/dedupe rules, developer-reply handling, Slack target resolution & verdict-message template
 - **`scripts/build_html.py`** — GitHub-style HTML report generator (reads `findings.json`, `meta.json`, `mr<N>.diff` from CWD)
 - **`slack-send` skill** (`~/.claude/skills/slack-send/`) — the **required** delivery path for step 6: `scripts/msg.sh` posts the verdict message and `scripts/send.sh` uploads the HTML report into the thread, both as the reviewer. Needs a Slack user token in `~/.slack-upload-token`; see that skill's `README.md` / `install.sh`. The Slack MCP connector is read-only in this workflow (thread/user lookups) and is a message-only last resort **only** if the user declines installing the token.
 - **`review-memory` skill** (`~/.claude/skills/review-memory/`) — per-repo learning layer. Step 1b `recall` and step 7 `record` go through `scripts/memory.py`. Calibrates reviews from past outcomes + developer responses; never overrides CLAUDE.md/ADRs.

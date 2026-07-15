@@ -120,17 +120,22 @@ trigger ─▶ recall memory ─▶ 4-agent panel ─▶ report ─▶ deliver �
 1. **Recall memory** — before reviewing, the panel loads this repo's past outcomes
    and any human watch items (see [Review memory](#review-memory)). This is
    calibration only; `CLAUDE.md` / ADRs still rank above it.
-2. **4-agent panel** — four reviewers run in parallel:
-   - **A – architecture & patterns** (layering, DI, state management)
-   - **B – correctness & edge cases** (logic, null-safety, races, error handling)
-   - **C – performance & quality** (rebuilds, complexity, naming, dead code)
-   - **D – build & analyze** (checks out the branch in an isolated worktree,
-     compiles + runs the analyzer; errors become blockers, warnings are counted)
-3. **Report** — findings are merged and de-duplicated (overlapping reviewers become
+2. **Resolve the stack** — the shared **`review-core`** engine detects the repo's stack
+   and libraries (Flutter BLoC/MobX/Riverpod/Provider, Go/Postgres, NestJS, …) and loads
+   the matching **lens pack(s)** on top of stack-agnostic **universal lenses**. Unknown
+   stack → universal-only fallback. See [Stack detection & lens packs](#stack-detection--lens-packs).
+3. **4-agent panel** — four reviewers run in parallel, each applying the universal
+   lenses + the loaded stack pack:
+   - **A – architecture & patterns** (layering, DI, state management, atomicity, reachability)
+   - **B – correctness & edge cases** (logic, null-safety, races/TOCTOU, idempotency, fail-closed security)
+   - **C – performance & quality** (hot-path work, complexity, naming, dead code, observability)
+   - **D – build & analyze** (isolated worktree; mirrors the repo's **real CI** — formatter/
+     linter/analyzer incl. build tags — plus a reachability grep; errors are blockers)
+4. **Report** — findings are merged and de-duplicated (overlapping reviewers become
    one thread with "+1" replies), tagged P0/P1/P2, with a copy-paste fix prompt.
-4. **Deliver** — inline (`/review-pr`) or an HTML report + Slack verdict
+5. **Deliver** — inline (`/review-pr`) or an HTML report + Slack verdict
    (`/review-pr-slack`).
-5. **Record memory** — findings + how the developer responded are written to a
+6. **Record memory** — findings + how the developer responded are written to a
    committed `.review-memory/` folder, feeding the next round.
 
 Two loops sit on top:
@@ -141,6 +146,43 @@ Two loops sit on top:
 - **Distill loop** — when a finding keeps getting the same developer verdict, a
   SessionStart nudge suggests promoting it into `CLAUDE.md` / an ADR. A **human**
   makes that change; the bot never edits its own rules.
+
+---
+
+## Stack detection & lens packs
+
+Review knowledge is split into two layers so the same engine works across every stack
+without a per-stack fork of the commands:
+
+- **Universal lenses** (`review-core/references/universal-lenses.md`, U1–U12) —
+  stack-agnostic principles that hold in any language: check-then-act races, write+event
+  atomicity, idempotency on money/events, fail-closed security gates, reachability
+  (defined ≠ wired), spec/AC match, test-effectiveness, stale-doc-after-rename, verify at
+  HEAD (don't trust `resolved`/stale merge flags), CI parity, complexity, resource
+  lifecycle.
+- **Stack lens packs** (`review-core/references/lenses/*.md`) — the idioms of one stack:
+  the concrete shape those principles take (e.g. Go SQL `FOR UPDATE`/CAS, Flutter
+  `copyWith` reset, NestJS provider wiring). Loaded only when detected.
+
+A **resolver** detects the base stack from the manifest and the state library from the
+dependencies, then composes **base + overlays**:
+
+| Repo | Loads |
+|---|---|
+| Flutter + BLoC | `_base-flutter` + `flutter-bloc` |
+| Flutter + MobX (+ Provider) | `_base-flutter` + `flutter-mobx` (+ `flutter-provider`) |
+| Go / Postgres | `go-postgres` |
+| NestJS | `nestjs` |
+| Unknown (Svelte, Rails, …) | **universal-only fallback** — still a full review |
+
+The repo's own `CLAUDE.md` / ADRs / linter config / `.review-memory` always outrank a
+generic pack. `/review-pr-doctor` prints which pack(s) the current repo would load.
+
+**Adding a stack:** drop a file in `review-core/references/lenses/` following
+`lenses/README.md`, then add its detection row to `resolver.md`. No command changes —
+that's the whole point of the split. Packs shipped today: `go-postgres`, `flutter-bloc`,
+`flutter-mobx`, `nestjs` (full); `react`, `flutter-provider`, `flutter-riverpod`,
+`python` (stubs — universal lenses still apply).
 
 ---
 
