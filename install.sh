@@ -11,12 +11,23 @@ echo "Installing commands -> ~/.claude/commands/"
 cp "$SRC"/commands/*.md "$HOME/.claude/commands/"
 
 echo "Installing bundled skills -> ~/.claude/skills/"
+# Back up any existing copy OUTSIDE ~/.claude/skills — an in-place "<name>.bak" dir
+# still contains a SKILL.md, so Claude Code would register it as a duplicate skill.
+BACKUP_DIR="$HOME/.claude/.pr-review-loop-backups"
 for s in "$SRC"/payload/skills/*/; do
   name="$(basename "$s")"
-  rm -rf "$HOME/.claude/skills/$name.bak"
-  [ -d "$HOME/.claude/skills/$name" ] && mv "$HOME/.claude/skills/$name" "$HOME/.claude/skills/$name.bak"
+  if [ -d "$HOME/.claude/skills/$name" ]; then
+    mkdir -p "$BACKUP_DIR"
+    rm -rf "$BACKUP_DIR/$name"
+    mv "$HOME/.claude/skills/$name" "$BACKUP_DIR/$name"
+  fi
   cp -R "$s" "$HOME/.claude/skills/$name"
   echo "  - $name"
+done
+# One-time cleanup: remove stale in-place *.bak skill dirs left by older installers
+# (they registered as duplicate skills). The real skills were just (re)installed above.
+for b in "$HOME"/.claude/skills/*.bak; do
+  [ -d "$b" ] && [ -f "$b/SKILL.md" ] && rm -rf "$b"
 done
 
 # syntax highlighting for the HTML report (review-pr-slack)
