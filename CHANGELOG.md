@@ -3,6 +3,44 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.8.0
+
+Stack-aware review engine — biggest change since the panel shipped. Designed from an
+audit of 675 real review comments across 16 repos + a 146-repo portfolio scan.
+
+Added
+- **New shared `review-core` skill** — the single source of truth for review quality:
+  the reviewer personas (A/B/C + Reviewer D), the **universal lenses** (U1–U12,
+  stack-agnostic principles), a **resolver** (stack + library detection), and pluggable
+  **stack lens packs**. Both `/review-pr` (inline) and `review-pr-slack` now delegate to
+  it, so the review brain is defined once, not duplicated.
+- **Stack lens packs** (`review-core/references/lenses/`): full packs for `go-postgres`,
+  `flutter-bloc`, `flutter-mobx`, `nestjs`; stubs for `react`, `flutter-provider`,
+  `flutter-riverpod`, `python`. Composed as **base + overlays** (e.g. `_base-flutter` +
+  `flutter-mobx`). Unknown stack → universal-only fallback. Add a stack by dropping a
+  file in `lenses/` + a resolver row — no command changes.
+- **Reviewer D now runs on the inline `/review-pr` path too** (it was Slack-only) — so
+  compile/lint/CI/reachability blockers are caught inline.
+- Universal lenses capture the highest-value findings the old Flutter-only prompts
+  missed: SQL/TOCTOU races, write+event atomicity, idempotency, fail-closed security,
+  **reachability (defined ≠ wired)**, spec/AC match, test-effectiveness, stale-doc.
+- **Reporting-completeness rule** (personas + `_base-flutter`): reviewers must still
+  enumerate the low-severity design-system / i18n / naming P2 nits (the ones human
+  reviewers leave most) even when the MR also has P0/P1s — depth must not crowd out
+  breadth. Validated on a real A/B: the new engine found a P0 mock-in-prod, a P1
+  double-refund idempotency gap, and an unreachable feature that the old engine and the
+  human reviewer both missed; this rule keeps the style sweep from being dropped.
+
+Changed
+- **Reviewer D mirrors the repo's REAL CI** instead of a generic build: reads
+  `.gitlab-ci.yml`/`.github/workflows` and runs its exact lint/test/build — formatter
+  gates (`gofmt -l`, `dart format --set-exit-if-changed`), analyzers, and **build tags**
+  (`//go:build e2e`, which `go build ./...` skips). Checks head pipeline status.
+- **Merge-conflict check verifies with `git merge-tree`** (universal lens U9) rather than
+  trusting the lazily-computed `has_conflicts`/`merge_status` API flag, which can be
+  stale. Re-reviews verify "fixed" at HEAD, not from `resolved=true`; stacked-MR aware.
+- `/review-pr-doctor` prints which lens pack(s) the current repo resolves to.
+
 ## 1.7.1
 
 Added
