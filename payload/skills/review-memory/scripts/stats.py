@@ -142,20 +142,59 @@ def review_activity(repo_root):
             "repeat": [(s, c) for s, c in sigs.most_common(5) if c > 1]}
 
 
-def fmt(n):
-    return f"{n:,.0f}"
+# ---- presentation (rtk-gain style) ------------------------------------------
+USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
+_C = {"g": "\033[92m", "y": "\033[93m", "c": "\033[96m", "r": "\033[91m",
+      "d": "\033[2m", "b": "\033[1m", "m": "\033[95m", "x": "\033[0m"}
+
+
+def c(txt, col):
+    return f"{_C[col]}{txt}{_C['x']}" if USE_COLOR else str(txt)
+
+
+def short(n):
+    """1234 -> 1.2K · 155100 -> 155.1K · 2_500_000 -> 2.5M (rtk-style)."""
+    n = float(n or 0)
+    sign = "-" if n < 0 else ""
+    n = abs(n)
+    for div, unit in ((1e9, "B"), (1e6, "M"), (1e3, "K")):
+        if n >= div * 0.9995:   # 999_999 rolls up to 1.0M, not 1000K
+            v = n / div
+            return f"{sign}{v:.1f}{unit}" if v < 99.95 else f"{sign}{v:.0f}{unit}"
+    return f"{sign}{int(n)}"
+
+
+def bar(pct, width=22, col="g"):
+    fill = max(0, min(width, round(pct / 100 * width)))
+    return c("█" * fill, col) + c("░" * (width - fill), "d")
+
+
+def rule(width=64):
+    return c("═" * width, "d")
+
+
+def kv(label, value, note=""):
+    line = f"  {label:<16}{value:>14}"
+    if note:
+        line += "   " + c(note, "d")
+    print(line)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("repo_root", nargs="?", default=".")
-    ap.add_argument("--sessions", type=int, default=10)
+    ap.add_argument("--sessions", type=int, default=0,
+                    help="limit to the N most recent sessions (default: all)")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
 
+    global USE_COLOR
+    if a.json:
+        USE_COLOR = False
+
     d = project_dir_for(a.repo_root)
     logs = glob.glob(os.path.join(d, "*.jsonl")) if d else []
-    sessions = read_usage(logs, a.sessions)
+    sessions = read_usage(logs, a.sessions or None)   # 0 -> all
     activity = review_activity(a.repo_root)
 
     if a.json:
@@ -163,11 +202,16 @@ def main():
                           "toolset_constants": TOOLSET}, indent=2))
         return
 
-    print("pr-review-loop stats\n")
+    print()
+    print(c("[ pr-review-loop stats ]", "b"))
+    print(rule())
+    print()
 
+    # ---- token usage ----
     if not sessions:
-        print("token usage: no Claude Code logs found for this directory")
-        print(f"  looked in: {d or '~/.claude/projects/<slug-of-cwd>'}\n")
+        print(c("  no Claude Code logs found for this directory", "y"))
+        print(c(f"  looked in: {d or '~/.claude/projects/<slug-of-cwd>'}", "d"))
+        print()
     else:
         tot = collections.Counter()
         for s in sessions:
@@ -178,72 +222,96 @@ def main():
         reads = tot["cache_read_input_tokens"]
         writes = tot["cache_creation_input_tokens"]
         hit = 100 * reads / (reads + writes) if (reads + writes) else 0
+        hcol = "g" if hit >= 90 else ("y" if hit >= 70 else "r")
 
-        print(f"token usage — last {len(sessions)} session(s), MAIN THREAD ONLY")
-        print(f"  turns                  {fmt(tot['turns']):>16}")
-        print(f"  output                 {fmt(tot['output_tokens']):>16}")
-        print(f"  cache read   (x{CACHE_READ_RATIO})   {fmt(reads):>16}")
-        print(f"  cache write  (x{CACHE_WRITE_RATIO})  {fmt(writes):>16}")
-        print(f"  uncached input         {fmt(tot['input_tokens']):>16}")
-        print(f"  ---------------------- {'-'*16}")
-        print(f"  effective input        {fmt(eff):>16}   (ratio-based, not a bill)")
-        print(f"  cache hit rate         {hit:>15.1f}%   (low => caches keep re-warming)")
+        print(c(f"Token usage — {len(sessions)} session(s), main thread only", "c"))
         print()
-        print(f"  {'session':<26}{'turns':>7}{'eff.input':>12}{'output':>10}")
-        for s in sessions[:5]:
-            print(f"  {s['mtime']:<26}{s['turns']:>7}{fmt(effective_input(s)):>12}{fmt(s['output_tokens']):>10}")
+        kv("Sessions", str(len(sessions)))
+        kv("Turns", short(tot["turns"]))
+        kv("Output", short(tot["output_tokens"]))
+        kv("Cache read", short(reads), f"x{CACHE_READ_RATIO}")
+        kv("Cache write", short(writes), f"x{CACHE_WRITE_RATIO}")
+        kv("Uncached input", short(tot["input_tokens"]))
+        kv("Effective input", short(eff), "ratio, not a bill")
+        print(f"  {'Cache hit rate':<16}{bar(hit)} {c(f'{hit:.1f}%', hcol)}")
         print()
 
-    print("review activity — this repo (.review-memory/decisions.jsonl)")
+        # per-session table, rtk "By Command" style, with an Impact mini-bar
+        mx = max(effective_input(s) for s in sessions) or 1
+        print(c("By session", "g"))
+        print(c(f"  {'#':>2}  {'when':<16}{'turns':>6}{'eff.in':>9}{'output':>9}  impact", "d"))
+        rows = sessions if a.sessions else sessions
+        shown = rows[:20]
+        for i, s in enumerate(shown, 1):
+            e = effective_input(s)
+            imp = bar(100 * e / mx, width=10, col="c")
+            print(f"  {i:>2}. {s['mtime']:<16}{s['turns']:>6}"
+                  f"{short(e):>9}{short(s['output_tokens']):>9}  {imp}")
+        if len(rows) > len(shown):
+            print(c(f"      … +{len(rows)-len(shown)} older session(s) (in the totals above)", "d"))
+        print()
+
+    # ---- review scoreboard ----
+    print(c("Review scoreboard — .review-memory/decisions.jsonl", "c"))
+    print()
     if not activity:
-        print("  none yet — created on the first review (memory.py record)\n")
+        print(c("  none yet — created on the first review (memory.py record)", "d"))
+        print()
     else:
         a_ = activity
         sev = a_["severity"]; p0 = sev.get("P0", 0); p1 = sev.get("P1", 0)
-        print(f"  reviews (MR x round) {a_['reviews']:>5}      MRs {a_['mrs']:>4}      rounds {a_['rounds']:>3}")
-        print(f"  findings             {a_['findings']:>5}      P0 {p0:>5}      P1 {p1:>5}   (blockers: {p0+p1})")
-        print(f"  severity split       {sev}")
+        kv("Reviews (MR×rnd)", str(a_["reviews"]), f"{a_['mrs']} MRs · {a_['rounds']} rounds")
+        blk = c(f"{p0+p1} blockers", "r" if p0 else "y") if (p0 + p1) else "0 blockers"
+        kv("Findings", str(a_["findings"]),
+           f"P0 {p0} · P1 {p1} · P2 {sev.get('P2',0)}  ({blk})")
         v = a_["verdicts"]
         if a_["rollups"]:
             appr = v.get("approve", 0) + v.get("approve_minor", 0)
             chg = v.get("request_changes", 0)
-            tot = appr + chg
-            print(f"  verdicts             approved {appr:>4}   request-changes {chg:>4}"
-                  + (f"   ({100*appr/tot:.0f}% approved)" if tot else ""))
-            print(f"                       {v}")
+            t_ = appr + chg
+            pct = f"{100*appr/t_:.0f}% approved" if t_ else ""
+            print(f"  {'Verdicts':<16}{bar(100*appr/t_ if t_ else 0)} "
+                  f"{c(f'{appr} approved', 'g')} · {c(f'{chg} changes', 'y')}  {c(pct,'d')}")
         else:
-            print("  verdicts             not recorded yet — roll-ups start on the next")
-            print("                       review (see 'reviews' in the record contract).")
+            kv("Verdicts", "—", "roll-ups start on the next recorded review")
         r = a_["resolutions"]
         acted = r.get("resolved", 0); disp = r.get("disputed", 0)
         known = sum(r.values()) - r.get("open", 0)
-        print(f"  dev verdicts         {r}")
         if known:
-            print(f"                       {100*acted/known:.0f}% of answered findings were fixed"
-                  f" · {100*disp/known:.0f}% disputed (high => reviewers wrong here)")
+            dcol = "r" if 100 * disp / known >= 25 else "d"
+            kv("Dev response", f"{100*acted/known:.0f}% fixed",
+               c(f"{100*disp/known:.0f}% disputed", dcol) + c("  (high = reviewers wrong here)", "d"))
+        else:
+            kv("Dev response", "—", "no developer replies recorded yet")
         if a_["repeat"]:
-            print("  recurring (ripe to distill into CLAUDE.md / an ADR):")
-            for s, c in a_["repeat"]:
-                print(f"    x{c}  {s}")
+            print()
+            print(c("  Ripe to distill (raised >1×) — promote into CLAUDE.md / an ADR:", "g"))
+            for s, cnt in a_["repeat"]:
+                print(f"    {c('×'+str(cnt),'y')}  {s}")
         print()
 
-    print("engine efficiency — measured constants (v1.10.0 probes, not this run)")
+    # ---- engine efficiency (measured constants) ----
     t = TOOLSET
-    print(f"  reviewer agents run on a minimal toolset (Read/Grep/Glob/Bash):")
-    print(f"    review-panel      ~{fmt(t['review_panel_per_turn'])} tok/turn")
-    print(f"    general-purpose   ~{fmt(t['general_purpose_per_turn'])} tok/turn  (~100 unused MCP schemas)")
-    print(f"    probe:  {fmt(t['probe_gp'])} -> {fmt(t['probe_rp'])} on identical work "
-          f"({100*(1-t['probe_rp']/t['probe_gp']):.0f}%)")
-    print(f"    real review: {fmt(t['real_review_before'])} -> {fmt(t['real_review_after'])} "
-          f"({100*(1-t['real_review_after']/t['real_review_before']):.0f}%), quality held")
+    print(c("Engine efficiency — measured constants (v1.10.0 probes)", "c"))
     print()
-    print("caveats")
-    print("  * Subagent (reviewer) turns are NOT logged by Claude Code — verified, 0 of")
-    print("    49k+ logged turns are sidechain. The token figures above are MAIN THREAD")
-    print("    ONLY; a review's true cost is higher and cannot be attributed per reviewer.")
-    print("  * 'effective input' applies published cache ratios; it compares, it does not bill.")
-    print("  * The engine constants are measured, but from the v1.10.0 probes — not from")
-    print("    your runs. Nothing here estimates your savings; we cannot measure them.")
+    kv("Reviewer/turn", f"~{short(t['review_panel_per_turn'])}", "minimal toolset (Read/Grep/Glob/Bash)")
+    kv("general-purpose", f"~{short(t['general_purpose_per_turn'])}", "~100 unused MCP schemas")
+    before = t["real_review_before"]
+    after = t["real_review_after"]
+    save = 100 * (1 - after / before)
+    detail = f"({short(before)} → {short(after)}, quality held)"
+    print(f"  {'Real-review cut':<16}{bar(save)} {c(f'{save:.0f}%', 'g')} {c(detail, 'd')}")
+    print()
+
+    print(c("Caveats", "d"))
+    for line in (
+        "subagent (reviewer) turns are NOT logged — token figures are main-thread",
+        "  only; a review's true cost is higher and can't be attributed per reviewer.",
+        "'effective input' applies cache ratios: it compares, it does not bill.",
+        "engine constants are from the v1.10.0 probes, not your runs — nothing here",
+        "  estimates your savings; those are not measurable from disk.",
+    ):
+        print(c("  " + line, "d"))
 
 
 if __name__ == "__main__":

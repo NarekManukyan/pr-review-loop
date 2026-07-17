@@ -3,6 +3,18 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.12.2
+
+Changed
+- **`/review-pr-stats` / `review-stats` got an rtk-gain-style facelift.** Banner + rule,
+  ANSI colour (auto-off when piped or `NO_COLOR`), a cache-hit **meter bar**, per-session
+  **impact bars**, an approvals bar, and the real-review-cut bar.
+- **Shows ALL sessions by default** (was capped at the 10 most recent). `--sessions N`
+  still narrows it; the per-session table lists up to 20 with an "+N older" note, and the
+  totals always cover everything.
+- **Short numbers everywhere** — `1.2K` / `155K` / `260M` / `1.2B` instead of
+  `1,234` / `260,000,000`.
+
 ## 1.12.1
 
 Added
