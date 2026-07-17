@@ -3,6 +3,66 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.9.0
+
+Review the blast radius, not just the diff. From a gap analysis against
+`dz44-group/bookings/booking-back!31`: our panel found 11 real findings across two
+rounds, then a human found four more that were present in the exact tree we reviewed.
+Three of the four lived in the **seams the change touches** — the unchanged composition
+root, a sibling endpoint, and the consumer on the far side of the outbox. The panel was
+anchoring on changed lines.
+
+Added
+- **U13 — Sibling parity.** Every new endpoint/worker/handler/subscriber/provider is
+  compared against its nearest existing sibling of the same class in the same file or
+  package; each divergence (required headers, auth, error→status mapping, registration,
+  timeout/retry, logging) is justified or a finding. A U13 finding **must cite the
+  sibling's `file:line`** next to the new code's. Caught: a new cancel POST missing the
+  `Idempotency-Key` its sibling money-POSTs require.
+- **U14 — Lifecycle: started ≠ drained** (extension of U5). U5 asks *is it wired?*;
+  U14 asks *is it stopped correctly?* For every background task the diff adds, the
+  composition root's **shutdown path must be read in full — even when that file is not
+  in the diff** — and the task checked for join/cancel/bounded-drain against its
+  siblings. Caught: a bare `go Reconciler.Run(ctx)` twenty lines from `workerWg`-joined
+  siblings.
+- **U3 extended — producer-side event IDs.** For any event another service consumes to
+  move money, the event ID is the consumer's only dedup key under at-least-once, so it
+  must be deterministic (`<event_type>:<aggregate_id>`), never `uuid.New()` per emit.
+  New panel question for every cross-service event: *what does the consumer dedup on?*
+- **go-postgres — money rounding.** `decimal.Div`/`Mul` results representing money must
+  round to the currency's minor unit **at computation**, not at the API boundary, so the
+  live value, the persisted row, and every replay agree by construction. Names the trap
+  (shopspring `decimal.Div` defaults to `DivisionPrecision = 16`) and the invariant
+  (does the client's value equal the persisted one, byte for byte?). Minor-unit exponent
+  derives from the currency, never hardcoded.
+- Reviewer D is now **CI parity + reachability + lifecycle** and returns `lifecycle_gaps`
+  alongside `reachability_gaps` (build-record shape stays backward-compatible).
+  Reviewer A owns U13 + U3's cross-service consumer contract; Reviewer B owns the
+  money-precision live-vs-persisted check.
+
+Fixed
+- **review-memory `recall` relevance.** The filter was `any(token in haystack)` over every
+  field, which failed both ways on a real 54-decision corpus: it **flooded** (one common
+  token selected everything — `dart` matched 54/54, `lib` 52/54, so `--area` was a no-op)
+  and it **silently returned nothing** for path-only areas, because paths were never split
+  (`--area "lib/features/meetings/view/meeting_player_page.dart"` → 0 decisions, which
+  looks identical to "no memory yet"). Now path-anchored with document-frequency filtering
+  (`GENERIC_DF = 0.5`) applied to path segments as well as keywords, so the corpus decides
+  what's generic instead of a hardcoded stoplist that rots. Falls back to showing
+  everything when nothing discriminating survives; watch items stay on the loose filter.
+  Deterministic and dependency-free by design — a fuzzy match here could **suppress** a
+  real finding. Adds `tests/test_memory.py`, the first test suite for `memory.py`.
+
+Changed
+- **Snapshot honesty.** The reviewed `head_sha`/`base_sha` are recorded in `meta.json`,
+  rendered in the HTML report header, and the short head SHA appears in the Slack verdict
+  — a verdict without a SHA is unreconcilable once the branch moves. Merge conflicts are
+  now **re-verified with `git merge-tree` at delivery time**, not only at fetch; if the
+  head moved or the target advanced in between, the verdict says so instead of reporting
+  a stale clean. (Real case: clean at 18:09, target advanced 18:28, branch conflicted.)
+- Persona prompts now state explicitly that **findings are not limited to changed files**
+  — unchanged code whose contract or risk the diff changes is in scope.
+
 ## 1.8.1
 
 Fixed

@@ -56,6 +56,25 @@ error + context rules, skip SQL/queue/HTTP sections.
   SUM(debit legs)`. If the repo has a ledger/invariants ADR, cite it. Only apply when
   the diff touches wallet/journal/balance code.
 
+### Money precision — round at computation, not at the boundary (maps U3/U8)
+- **Smell:** a `decimal.Div` / `decimal.Mul` whose result represents money, with no
+  `.Round(<minor unit>)` at the point of computation — the value is rounded only later,
+  at the API boundary or by `StringFixed(2)` on persist. → **P1**.
+- **The specific trap:** shopspring **`decimal.Div` defaults to `DivisionPrecision = 16`**.
+  So the live quote carries 16 dp while the persisted row stores 2 — the response and the
+  replayed/persisted quote can disagree by up to half a cent, and nobody notices because
+  the arithmetic *looks* impeccable.
+- **Required:** round to the currency's minor unit **at computation**, so the live value,
+  the persisted row, and every replay agree by construction. The minor-unit exponent must
+  **derive from the currency** (JPY 0-dp, most 2-dp) — never hardcode `2`.
+- **Invariant to check:** *does the value returned to the client equal the value
+  persisted, byte for byte?* If you can't answer yes from the code, it's a finding.
+- **Worked example:** `internal/booking/domain/cancel.go:238`
+  `b.PriceAmount.Mul(...).Div(decimal.NewFromInt(100))` (percent) and `:244`
+  `b.PriceAmount.Div(decimal.NewFromInt(int64(nights)))` (per-night) — neither rounds;
+  persistence used `StringFixed(2)`. A reviewer examined this penalty math and *praised*
+  the decimal handling: correct-looking arithmetic is not the same as agreeing values.
+
 ### Compensating actions & reconciler completeness (maps U2/U5)
 - **Smell:** a failed refund/credit side-effect only logs, with no pending-compensation
   record; a new terminal/resting state (`refund_pending`, `credit_pending`) the

@@ -32,7 +32,11 @@ documented exceptions), module boundaries, domain purity, state-management corre
 **for the repo's actual state library** (per the loaded pack — BLoC, MobX, Riverpod,
 NestJS providers, …), and cross-repo/deploy-order coupling.
 Owns universal lenses **U2** (write+event atomicity), **U5** (reachability), **U6**
-(spec/AC), **U8** (naming/wire semantics), plus the pack's architecture rules.
+(spec/AC), **U8** (naming/wire semantics), **U13** (sibling parity — compare every new
+endpoint/worker/handler against its nearest neighbor of the same class and cite the
+sibling's `file:line`), and the **cross-service consumer contract** half of **U3** (for
+every event another team consumes: what do they dedup on?), plus the pack's
+architecture rules.
 
 ## Reviewer B — Correctness & Edge Cases
 Senior `<stack>` engineer. Focus: logic bugs, null/None safety, async/await & race
@@ -41,7 +45,10 @@ mappings/parsing, edge cases (empty/null/pagination), hardcoded/placeholder valu
 prod paths.
 Owns **U1** (TOCTOU), **U3** (idempotency), **U4** (fail-closed security), **U7**
 (test-effectiveness), **U9** (verify at HEAD), **U12** (resource/lifecycle & data
-migration), plus the pack's correctness rules.
+migration), plus the pack's correctness rules. Includes **money precision**: for any
+computed monetary value, does what's returned to the client equal what's persisted, byte
+for byte? Correct-looking decimal arithmetic that rounds only at the boundary is a
+finding, not a compliment (see the stack pack's money-rounding rule).
 
 ## Reviewer C — Performance & Code Quality
 Senior `<stack>` engineer. Focus: unnecessary work on hot paths, algorithmic
@@ -51,10 +58,11 @@ perf/quality rules.
 Owns **U8** (stale docs), **U11** (complexity), plus the pack's perf rules. Cite
 `method + file:line + measured value vs threshold` for complexity.
 
-## Reviewer D — Build & Analyze (CI parity + reachability)
+## Reviewer D — Build & Analyze (CI parity + reachability + lifecycle)
 Verifies each OPEN MR actually builds and passes the repo's **real** checks, in an
 isolated `git worktree` only (never the user's checkout). Owns universal lens **U10**
-(CI parity) and executes the grep half of **U5** (reachability).
+(CI parity), executes the grep half of **U5** (reachability), and owns **U14**
+(started ≠ drained).
 
 Per MR:
 1. `cd <repo> && git fetch origin <source-branch>`;
@@ -67,10 +75,18 @@ Per MR:
    - **Build tags:** if tests use `//go:build <tag>`, run `go vet -tags=<tag> ./...` and `go test -tags=<tag> -run=^$ ./...` (compile-only) — `go build ./...` skips `_test.go` and tagged files, so a test-only MR can be broken while a generic build is green.
    - **Real dependency resolution:** run the install the way CI does (`go mod verify`, `npm ci`, `flutter pub get` on the **pinned** deps). A committed local `path:`/`file:` dependency breaks everyone else's install even though it resolves on the author's machine — flag it.
    - Stack specifics live in each lens pack's "CI gates" section.
-3. **Reachability grep (U5):** for every new worker/job/handler/subscriber/route/
-   provider/widget in the diff, grep the composition root (`wire.go`/`wire_gen.go`,
+3. **Reachability + lifecycle (U5 + U14):** for every new worker/job/handler/subscriber/
+   route/provider/widget in the diff, grep the composition root (`wire.go`/`wire_gen.go`,
    `cmd/**`, `main.*`, DI modules, router tables, parent widgets) for a call site.
-   Defined-but-never-wired → P0/P1 finding, cross-referenced to the MR's ACs.
+   Defined-but-never-wired → P0/P1, cross-referenced to the MR's ACs.
+   **Do not stop at "yes, it's wired."** When the new thing is a background task
+   (goroutine/worker/subscriber/ticker/pool), **read the composition root's startup AND
+   shutdown paths in full** — not just the grep hit — and compare the new task against
+   the **nearest sibling task in the same file**: is it joined the same way
+   (WaitGroup/errgroup), context-cancelled, drain-bounded? A bare `go X.Run(ctx)` beside
+   `wg.Add(1)`-tracked siblings is a U14 finding. **This applies even when the
+   composition root is not in the diff** — a diff can hand pre-existing unchanged code a
+   new responsibility.
 4. **Pipeline status:** if the platform exposes the head pipeline
    (`glab ci status` / `gh pr checks`), a RED required job is a P1 merge-blocker even
    if the local run is green — report it with the failing job name.
@@ -85,9 +101,11 @@ output + file:line, category "Build & Analyze"). Warnings/infos → counted, not
 itemized, unless a warning is introduced by this diff and marks a real bug (P2). Skip
 already-merged MRs (record `{"compiles":null,"notes":"skipped — already merged"}`).
 
-Return one build record per MR:
-`{"mr":N,"reviewer":"D","build":{"compiles":true,"analyzer_errors":0,"analyzer_warnings":0,"ci_gates":["gofmt","dart analyze","go vet -tags=e2e"],"pipeline":"passed|failed|n/a","tool":"…","notes":"…"}}`
-plus P0/P2 findings for any errors and any reachability gaps.
+Return one build record per MR (shape is additive — `lifecycle_gaps` alongside the
+existing fields, older consumers ignore it):
+`{"mr":N,"reviewer":"D","build":{"compiles":true,"analyzer_errors":0,"analyzer_warnings":0,"ci_gates":["gofmt","dart analyze","go vet -tags=e2e"],"pipeline":"passed|failed|n/a","reachability_gaps":[],"lifecycle_gaps":[],"tool":"…","notes":"…"}}`
+plus P0/P2 findings for any errors, any reachability gaps, and any lifecycle gaps
+(each citing the sibling task's `file:line` it diverges from).
 
 > The inline `/review-pr` command historically had **no** Reviewer D. It now runs D by
 > referencing this file — so inline reviews catch compile/lint/CI/reachability blockers
