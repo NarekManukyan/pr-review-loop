@@ -3,6 +3,43 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.10.0
+
+Token budget + the seams reviewer. Measured on four real MRs: a round cost 103k–652k
+input tokens, 60–85% of it the **full source of every changed file** — loaded *in
+addition to* the diff, and 3–6× its size. On `explorer-back!71` the panel loaded 652k and
+silently truncated. Bulk-loading was also never what caught defects: on `booking-back!31`
+three of four misses were in files **not in the diff**.
+
+Changed
+- **Reviewers get the diff (±40 lines of hunk context), not the full source of every
+  changed file.** They **read on demand** instead — and the reads that matter are
+  **mandatory**, not optional (`personas.md` § "Reading the code"): the whole file for a
+  design-system/i18n/dead-code sweep, the whole function for a complexity metric, the
+  sibling for U13, the composition root's startup *and* shutdown for U5/U14. Aimed reads,
+  not bulk loads. Line numbers come from the hunk header or the file you read — never
+  estimated.
+- **Material caps, stated not silent.** Skip a file whose diff exceeds ~15k tokens; cap
+  total material ~60k; **name every skipped file** in the overview, `meta.json`
+  (`skipped_files`) and the verdict. A skipped file is a *known gap*, not a covered one —
+  this is the skill's own "no silent caps" rule applied to itself. Reviewer D's tool
+  output is bounded too: quote only cited error lines, count warnings, truncate dumps
+  over ~50 lines.
+- **Reviewer D is now mechanical and runs on `model: 'haiku'`** — CI parity only (U10),
+  with a small context (branch + CI config + file list, no diff body, no source).
+
+Added
+- **Reviewer E — Seams & Blast Radius.** Owns **U5** (reachability), **U13** (sibling
+  parity), **U14** (lifecycle) and **U3's cross-service consumer contract** — the lenses
+  that were scattered across A and D, so nobody owned them end to end and nobody looked.
+  One job: *the diff changed something — what unchanged code did it just make wrong?*
+  E reads the composition root / sibling / consumer on demand; it never needed the bulk
+  load. Rendered in the HTML report with its own colour.
+
+Net: modelled ~686k → ~215k per round on `explorer-back!71` (~69%) **while adding a
+reviewer**. Gated on an A/B against booking-front!27 and minitok.go!1293 — a token cut
+that loses findings is a regression, not a win.
+
 ## 1.9.0
 
 Review the blast radius, not just the diff. From a gap analysis against

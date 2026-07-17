@@ -11,9 +11,20 @@ You are orchestrating a code-review panel. The **review brain lives in the share
 > This command only handles **inline delivery** on GitHub/GitLab.
 
 The panel is Reviewers **A (Architecture)**, **B (Correctness)**, **C (Perf/Quality)**,
-and **D (Build & Analyze — CI parity + reachability)**, defined in
-`review-core/references/personas.md`. Their focus, the universal lenses (U1–U12), and
+**D (Build & CI parity — spawn with `model: 'haiku'`, it is mechanical)**, and
+**E (Seams & Blast Radius — U5/U13/U14: is the new thing wired, drained like its
+siblings, consistent with its neighbours?)**, defined in
+`review-core/references/personas.md`. Their focus, the universal lenses (U1–U14), and
 the per-stack idioms are all supplied by the engine.
+
+**Material contract (read this before fetching anything).** Give the panel the **diff
+with ±40 lines of hunk context** — do NOT bulk-fetch the full source of every changed
+file. Measured on real MRs full sources run 3–6× the diff and, times the panel, exceed
+the context window (silently truncating). Reviewers **read on demand**, and the reads
+that matter are mandatory — see `personas.md` § "Reading the code". Apply the same
+caps as the Slack path: skip any single file whose diff exceeds ~15k tokens, cap total
+material ~60k tokens, and **name every file you skipped** in the overview — a skipped
+file is a known gap, not a covered one.
 
 ---
 
@@ -100,9 +111,9 @@ the per-stack idioms are all supplied by the engine.
    # GitLab: glab api -X PUT ".../discussions/<id>?resolved=true"
    ```
 
-5. **Run the panel.** Spawn Reviewers A/B/C **and D** (Build & Analyze — the inline path
-   now runs D too, so compile/lint/CI/reachability blockers are caught, not just on the
-   Slack path). Into every persona prompt inject, in precedence order: the universal
+5. **Run the panel.** Spawn Reviewers A/B/C, **D** (Build & CI parity — `model: 'haiku'`,
+   small context: branch + CI config + file list, no diff body) **and E** (Seams & Blast
+   Radius — the reviewer for code *outside* the diff). Into every persona prompt inject, in precedence order: the universal
    lenses → the loaded stack `lenses/*.md` → repo CLAUDE.md+ADRs → repo linter config →
    `.review-memory` recall (+ thread context on re-reviews). Skip generated files per the
    loaded pack's "Generated / skip" list.
@@ -125,8 +136,10 @@ the per-stack idioms are all supplied by the engine.
    Sections: **Summary** · **Stack & packs loaded** (the resolver line) · **✅ Resolved
    since last round** · **📌 Deferred by author** (with guardrails) · **📝 Author
    follow-up comments** · **⚠️ Still Open from previous rounds** · **🆕 New P0** ·
-   **🆕 New P1** · **🆕 New P2** · **Build & Analyze** (Reviewer D: compiles, CI gates
-   run, pipeline status, reachability gaps) · **Complex Logic Flagged** · **Verdict**
+   **🆕 New P1** · **🆕 New P2** · **Build & CI** (Reviewer D: compiles, CI gates run,
+   pipeline status) · **Seams** (Reviewer E: reachability / lifecycle / sibling-parity
+   gaps) · **Skipped files** (anything the caps dropped — a known gap, name it) ·
+   **Complex Logic Flagged** · **Verdict**
    (`✅ Approve` / `⚠️ Approve with minor fixes` / `🔄 Request Changes`). Merge conflict
    OR broken build/CI OR any P0/P1 → Request Changes.
 

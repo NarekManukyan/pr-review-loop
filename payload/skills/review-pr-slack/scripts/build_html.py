@@ -27,11 +27,12 @@ SEV_COLORS = {'P0': ('#cf222e', '#FFEBE9', 'P0 · Blocker'),
               'P1': ('#bc4c00', '#fff1e5', 'P1 · Should fix'),
               'P2': ('#9a6700', '#fff8c5', 'P2 · Nice to fix')}
 REV_COLORS = {'A': '#8250df', 'B': '#0969da', 'C': '#1a7f37', 'D': '#cf222e',
-              'panel': '#57606a'}
+              'E': '#bf3989', 'panel': '#57606a'}
 REV_NAMES = {'A': 'Reviewer A · Architecture & Patterns',
              'B': 'Reviewer B · Correctness & Edge Cases',
              'C': 'Reviewer C · Performance & Code Quality',
              'D': 'Reviewer D · Build & Analyze',
+             'E': 'Reviewer E · Seams & Blast Radius',
              'panel': 'Panel review'}
 
 def rev_color(r):
@@ -378,7 +379,7 @@ def overview_table():
     return ("<table class='ovtbl'><tr><th>MR</th><th>Title</th><th>State</th>"
             "<th>P0</th><th>P1</th><th>P2</th><th>Build</th><th>Conflicts</th><th>Verdict</th></tr>"
             + ''.join(rows) + "</table>")
-TITLE = meta.get('title', 'MR Review — Panel of 3')
+TITLE = meta.get('title', 'MR Review — Reviewer Panel')
 SUBTITLE = meta.get('subtitle', 'Reviewer A: Architecture & Patterns · B: Correctness & Edge Cases · '
                                 'C: Performance & Code Quality · Generated files excluded.')
 body = ''.join(render_mr(int(mr)) for mr in ORDER)

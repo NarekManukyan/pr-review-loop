@@ -175,10 +175,12 @@ diff**; the diff gave pre-existing unchanged code a new responsibility.
 
 ---
 
-**Applying these:** each persona (`personas.md`) owns a subset — A: U2, U5, U6, U8,
-U13, U3's cross-service consumer contract; B: U1, U3, U4, U7, U9, U12; C: U8, U11;
-D: U10 + U5's grep + U14. But any reviewer may raise any lens if the evidence is
-theirs. The stack pack tells you what U1–U14 *look like* in this repo's language.
+**Applying these:** each persona (`personas.md`) owns a subset — A: U2, U6, U8;
+B: U1, U3 (in-service half), U4, U7, U9, U12; C: U8, U11; D: U10 (mechanical CI only);
+**E: U5, U13, U14 + U3's cross-service consumer contract** — the seams reviewer, whose
+whole job is the code *outside* the diff. But any reviewer may raise any lens if the
+evidence is theirs. The stack pack tells you what U1–U14 *look like* in this repo's
+language.
 
 **Scope note (U13/U14):** findings are **not limited to changed files**. Unchanged code
 whose contract or risk *this diff changes* is in scope — the composition root, the

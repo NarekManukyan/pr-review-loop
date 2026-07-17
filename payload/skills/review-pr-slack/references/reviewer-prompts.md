@@ -1,7 +1,7 @@
 # Delivery templates & prompt scaffolding (review-pr-slack)
 
 The **review brain is the shared `review-core` engine** — personas, universal lenses
-(U1–U12), stack lens packs, and Reviewer D's CI-parity/reachability logic all live in
+(U1–U14), stack lens packs, and Reviewer D/E's CI-parity, reachability and lifecycle logic live in
 `~/.claude/skills/review-core/`. This file holds only what is **specific to the Slack
 delivery path**: the common context block wrapper, Slack target resolution, developer-
 reply handling, merge/dedupe rules, the fix-prompt template, and the verdict message.
@@ -14,17 +14,26 @@ reply handling, merge/dedupe rules, the fix-prompt template, and the verdict mes
 
 ```
 YOU ARE PART OF THE review-core PANEL. Read first, in this order:
-- ~/.claude/skills/review-core/references/personas.md — your persona (A/B/C/D).
-- ~/.claude/skills/review-core/references/universal-lenses.md — U1–U12, always apply.
+- ~/.claude/skills/review-core/references/personas.md — your persona (A/B/C/D/E) AND
+  its "Reading the code" table: you get the diff, you fetch the rest on demand.
+- ~/.claude/skills/review-core/references/universal-lenses.md — U1–U14, always apply.
 - The stack lens pack(s) the resolver loaded for this repo:
   <list, e.g. _base-flutter.md + flutter-mobx.md  |  go-postgres.md  |  nestjs.md  |  (none → universal-only)>
 - <repo>/CLAUDE.md and every ADR (docs/adr/, docs/adrs/, .cursor/rules/*.mdc) — binding;
   cite the specific ADR in any finding it governs. Repo rules OUTRANK the generic pack.
 
 Review materials in <scratchpad>/review/:
-- mr<N>.diff — unified diffs (generated files already excluded per the pack's skip list)
-- mr<N>-files/ — FULL source of changed files at each MR's head commit. Read full files.
-- The repo at <repo-path> — for imports, existing patterns, referenced classes.
+- mr<N>.diff — unified diffs with ±40 lines of context per hunk (generated files already
+  excluded per the pack's skip list).
+- The repo at <repo-path> — READ IT ON DEMAND. You are NOT given the full source of every
+  changed file; bulk-loading it cost 3-6x the diff and still missed the defects that live
+  outside it. Open exactly what a finding needs. The reads in personas.md § "Reading the
+  code" are MANDATORY, not optional: the whole file for a design-system/i18n/dead-code
+  sweep, the whole function for a complexity metric, the sibling for U13, the composition
+  root's startup AND shutdown for U5/U14. A finding you could have proven by opening one
+  file is a miss, not a saving.
+- Line numbers: take them from the hunk's @@ header or from the file you read. NEVER
+  estimate a line number — read the file or drop the finding.
 
 MR context: <one line per MR: number, title, target branch, state, stacking relationships>
 
@@ -43,11 +52,11 @@ Rules:
 - A PR conflicting with its target (verify via git merge-tree, not just the API flag) is a
   P1 blocker, never Approve (U9).
 - Do NOT flag missing codegen/generated files.
-- Line numbers reference the NEW file version (use mr*-files for exact numbers).
+- Line numbers reference the NEW file version (from the hunk @@ header, or the file you read).
 - Also flag any complex function/calculation: what it does + whether the logic is correct.
 
 Return ONLY a JSON array (no prose) of findings:
-[{"mr":57,"file":"...","line":123,"severity":"P1","reviewer":"<A|B|C|D>",
+[{"mr":57,"file":"...","line":123,"severity":"P1","reviewer":"<A|B|C|D|E>",
   "category":"<persona category>","title":"short title",
   "body":"why it matters, cite exact code + the rule/ADR/lens","snippet":"the exact offending lines"}]
 Plus one final element per MR: {"mr":N,"reviewer":"<X>","summary":"2-3 sentence assessment"}
@@ -166,7 +175,7 @@ Short — verdicts only; everything else lives in the HTML report. Slack mrkdwn:
 `*text*`, links are `<url|label>`, inline code is `` `code` `` (markdown `**bold**` /
 `[x](y)` will NOT render).
 ```
-Hi <FirstName> :wave: 4-reviewer panel review of your <repo> MRs is ready
+Hi <FirstName> :wave: 5-reviewer panel review of your <repo> MRs is ready
 (no comments were posted on GitLab).
 
 *P0: x · P1: y · P2: z*
