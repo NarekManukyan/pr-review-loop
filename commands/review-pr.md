@@ -17,14 +17,12 @@ siblings, consistent with its neighbours?)**, defined in
 `review-core/references/personas.md`. Their focus, the universal lenses (U1–U14), and
 the per-stack idioms are all supplied by the engine.
 
-**Material contract (read this before fetching anything).** Give the panel the **diff
-with ±40 lines of hunk context** — do NOT bulk-fetch the full source of every changed
-file. Measured on real MRs full sources run 3–6× the diff and, times the panel, exceed
-the context window (silently truncating). Reviewers **read on demand**, and the reads
-that matter are mandatory — see `personas.md` § "Reading the code". Apply the same
-caps as the Slack path: skip any single file whose diff exceeds ~15k tokens, cap total
-material ~60k tokens, and **name every file you skipped** in the overview — a skipped
-file is a known gap, not a covered one.
+**Material contract.** Give the panel the diff **and** the full source of the changed
+files, and require the reads in `personas.md` § "Reading the code" (whole file for a
+design-system sweep, whole function for a complexity metric, the sibling for U13, the
+composition root for U5/U14). Findings are not limited to changed files. Apply the caps:
+skip any single file whose diff exceeds ~15k tokens, cap total material ~60k tokens, and
+**name every file you skipped** — a skipped file is a known gap, not a covered one.
 
 ---
 

@@ -23,17 +23,15 @@ YOU ARE PART OF THE review-core PANEL. Read first, in this order:
   cite the specific ADR in any finding it governs. Repo rules OUTRANK the generic pack.
 
 Review materials in <scratchpad>/review/:
-- mr<N>.diff — unified diffs with ±40 lines of context per hunk (generated files already
-  excluded per the pack's skip list).
-- The repo at <repo-path> — READ IT ON DEMAND. You are NOT given the full source of every
-  changed file; bulk-loading it cost 3-6x the diff and still missed the defects that live
-  outside it. Open exactly what a finding needs. The reads in personas.md § "Reading the
-  code" are MANDATORY, not optional: the whole file for a design-system/i18n/dead-code
-  sweep, the whole function for a complexity metric, the sibling for U13, the composition
-  root's startup AND shutdown for U5/U14. A finding you could have proven by opening one
-  file is a miss, not a saving.
-- Line numbers: take them from the hunk's @@ header or from the file you read. NEVER
-  estimate a line number — read the file or drop the finding.
+- mr<N>.diff — unified diffs (generated files already excluded per the pack's skip list).
+- mr<N>-files/ — FULL source of changed files at each MR's head commit.
+- The repo at <repo-path> — read it for anything outside the changed files: the
+  composition root, the sibling, the consumer. Findings are NOT limited to changed files.
+- The reads in personas.md § "Reading the code" are MANDATORY, not optional: the whole file
+  for a design-system/i18n/dead-code sweep, the whole function for a complexity metric, the
+  sibling for U13, the composition root's startup AND shutdown for U5/U14. A finding you
+  could have proven by opening one file is a miss.
+- Line numbers: from the file you read or the hunk's @@ header. NEVER estimate one.
 
 MR context: <one line per MR: number, title, target branch, state, stacking relationships>
 

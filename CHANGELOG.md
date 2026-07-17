@@ -5,76 +5,66 @@ All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 
 ## 1.10.0
 
-Token cost, measured rather than modelled — plus the seams reviewer. Four controlled
-probes (identical work, one variable each) produced a cost law that fits within 1.4%:
+The measured token fix, plus the seams reviewer. Four controlled probes (identical work,
+one variable each) produced a cost law that fits within 1.4%:
 
 ```
 cost ~= tool_uses x (system prompt + TOOL SCHEMAS)  +  content (paid ONCE, cached)
                      `- ~6,451/turn, of which ~5,420 is schemas -'
 ```
 
-Everything below follows from that. Two of the levers this release originally shipped on
-were falsified by the probes and are recorded here as such.
+Content is cached and paid once, so trimming what reviewers read is NOT where cost lives.
+The cost is tool schemas. This release ships only what that finding supports.
 
 Changed
 - **Reviewers now spawn as purpose-built agents with a minimal toolset** — new
   `agents/review-panel.md` (A/B/C/E: `Read, Grep, Glob, Bash`) and `agents/review-build.md`
   (D: `Bash, Read`, `model: haiku`), installed to `~/.claude/agents/`. They were
-  `general-purpose`, which re-sends **~100 unused MCP tool schemas on every turn**.
-  Measured two ways. **Probe** (identical trivial 11-turn agent): **71,479 tok as
-  general-purpose vs 12,379 as `review-panel` — 82.7%**, i.e. ~5,420 tok/turn is schemas.
-  A 4-tool agent with a *longer* system prompt cost only +522 over a terse one, which rules
-  out prompt length as the cause. **Real review** (explorer-back!71, same contract, same
-  25 tool_uses, only the agent type differing): **154,347 → 102,782 tok, a 33% cut on one
-  reviewer** — ~258k/round across the panel. It is 33% rather than 83% because a real review
-  also carries ~70k of unavoidable content (cached, paid once); the *overhead* portion drops
-  83%, the content portion does not move.
-  **Quality held or improved**: 11 → 10 findings, but the cheap panel *recovered* two
-  findings the expensive one missed (`onboarding_kyc.go:51` check-then-act,
-  `repository.go:335` sibling mappers), *upgraded* the `Update()` TOCTOU to P0, and found
-  two nobody else did — including a P1 **fail-open**: with the gate off,
-  `mapUpdateExplorer:636-641` self-activates an `admin_rejected` guide and nulls the
-  reason, a branch no test covers.
-- **Generated files are skipped from the diff AND from reads, per the loaded pack** — the
-  skip list was Flutter-shaped, so a Go repo's generated output sailed through. The Go
-  pack said `*.sql.go`, but sqlc also emits `models.go`/`db.go`/`querier.go`, and
-  `docs/swagger/**` was unlisted. Measured on explorer-back!71: generated files were **68%
-  of the source fetched and 29% of the diff** (64k swagger + 30k sqlc). Free, zero risk.
-- **Reviewer D is mechanical again**, CI parity (U10) only, on haiku, with a small context
-  (branch + CI config + file list — no diff body, no source).
+  `general-purpose`, re-sending **~100 unused MCP tool schemas every turn**.
+  **Probe**: identical trivial 11-turn agent = **71,479 tok general-purpose vs 12,379 as
+  `review-panel` (−82.7%)**. A 4-tool agent with a *longer* system prompt cost only +522
+  over a terse one, ruling out prompt length — it is the schemas.
+  **Real review** (explorer-back!71, same contract, same 25 tool_uses, only the agent type
+  differing): **154,347 → 102,782 (−33% on one reviewer)**, ~258k/round across the panel.
+  33% rather than 83% because a real review also carries ~70k of content that does not
+  move. **Quality held or improved**: the cheap panel recovered two findings the expensive
+  one missed, upgraded the `Update()` TOCTOU to P0, and found a P1 **fail-open** neither
+  other arm caught (`explorer.go:636` self-activates an `admin_rejected` guide with the
+  gate off, nulling the reason — a branch no test covers).
+- **Generated files are skipped from the diff AND from reads, per the loaded pack.** The
+  skip list was Flutter-shaped, so Go generated output sailed through: the pack said
+  `*.sql.go`, but sqlc also emits `models.go`/`db.go`/`querier.go`, and `docs/swagger/**`
+  was unlisted. Measured on explorer-back!71: generated files were **68% of the source
+  fetched and 29% of the diff** (64k swagger + 30k sqlc). Free, zero risk.
+- **Reviewer D is mechanical again** — CI parity (U10) only, on haiku, small context
+  (branch + CI config + file list). Its output is bounded: quote only cited error lines,
+  count warnings, truncate dumps over ~50 lines.
 - Material caps, stated not silent: skip a file whose diff exceeds ~15k tokens, cap total
   ~60k, and **name every skipped file** in the overview, `meta.json` (`skipped_files`) and
-  the verdict. A skipped file is a *known gap*, not a covered one. Reviewer D's tool output
-  is bounded too: quote only cited error lines, count warnings, truncate dumps over ~50 lines.
+  the verdict. A skipped file is a *known gap*, not a covered one.
 
 Added
 - **Reviewer E — Seams & Blast Radius.** Owns **U5** (reachability), **U13** (sibling
   parity), **U14** (lifecycle) and **U3's cross-service consumer contract** — lenses that
   were scattered across A and D, so nobody owned them and nobody looked. One job: *the diff
-  changed something — what unchanged code did it just make wrong?* **Validated**: on
-  explorer-back!71 E found a P1 the old panel missed entirely — `di/providers.go:166`, the
-  two new subscribers skip the `processedEvents` dedup ledger that all five siblings on the
-  same subscription use.
-- Reviewers get the diff plus ±40 lines of hunk context and **read on demand**, with the
-  reads that matter **mandatory** (`personas.md` § "Reading the code"): whole file for a
-  design-system/i18n/dead-code sweep, whole function for a complexity metric, the sibling
-  for U13, the composition root's startup *and* shutdown for U5/U14. **Kept for quality,
-  not for tokens** — on booking-front!27 this took the panel from **8 findings to 25**,
-  recovering the design-system class the old prompts dropped (including the exact
-  `copyWith`/`setColor` idiom the human reviewer flags by hand).
+  changed something — what unchanged code did it just make wrong?* **Validated on
+  explorer-back!71**: E found `di/providers.go:166` — the two new subscribers skip the
+  `processedEvents` dedup ledger all five siblings on the same subscription use — which the
+  old panel missed entirely.
+- The mandatory-read rules in `personas.md` § "Reading the code" (whole file for a
+  design-system sweep, whole function for a complexity metric, the sibling for U13, the
+  composition root for U5/U14). On booking-front!27 these took the panel from **8 findings
+  to 25**, recovering the design-system class the old prompts dropped.
 
-Falsified (recorded so it is not re-attempted)
-- **"Bulk-loading full sources costs 3–6x."** Bulk-load != bulk-read: the orchestrator
-  writes files to disk, but an agent's context only grows when it `Read`s. Arm A never
-  opened 104k of the 140k fetched. The 652k figure this release was first pitched on was
-  wrong in kind.
-- **"Read-on-demand cuts tokens."** It does not. On booking-front!27 the panel read 92% of
-  sources anyway; on explorer-back!71 the new contract read *more* (23 files vs 16). Agents
-  read what the lenses require, regardless of instruction.
+Falsified by the probes (recorded so it is not re-attempted)
+- **"Bulk-loading full sources costs 3–6x."** Bulk-load != bulk-read: an agent's context
+  only grows when it `Read`s. Arm A never opened 104k of the 140k fetched.
+- **"Read-on-demand cuts tokens."** It does not — the panel read 92% of sources anyway on
+  one MR, and *more* files on another. Agents read what the lenses require. The material
+  contract is therefore UNCHANGED in this release; that experiment is still open.
 - **"Batching tool calls saves tokens."** It does not — cost scales with tool-*uses*, not
-  API round-trips (71,687 batched vs 71,479 serial). It is a ~3x latency win only.
-- **"Re-sent context dominates."** It is cached: +24.9k of content cost +24.9k once, not
-  x10 across turns.
+  API round-trips (71,687 batched vs 71,479 serial). ~3x latency win only.
+- **"Re-sent context dominates."** It is cached: +24.9k of content cost +24.9k once, not x10.
 
 ## 1.9.0
 

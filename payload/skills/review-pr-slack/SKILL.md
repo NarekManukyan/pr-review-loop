@@ -77,27 +77,24 @@ Per MR: metadata (title, author name+username, source/target branch, state, head
 ```bash
 glab api "projects/<url-encoded-path>/merge_requests/<N>"          # metadata
 glab api "projects/<url-encoded-path>/merge_requests/<N>/diffs?per_page=100"  # diffs
-# full file at head — fetched ON DEMAND by a reviewer, not bulk-loaded up front:
-glab api "projects/<path>/repository/files/<url-encoded-file>/raw?ref=<sha>"
+glab api "projects/<path>/repository/files/<url-encoded-file>/raw?ref=<sha>"  # full file at head
 ```
 
-Write per-MR unified diffs (generated files excluded) to `mr<N>.diff`, requesting
-**±40 lines of context around each hunk**. Note stacked MRs (target branch = another
-MR's source) and already-merged state — report both in the output.
+Write per-MR unified diffs (generated files excluded — see hard rule 3) to `mr<N>.diff`
+and full sources to `mr<N>-files/<path>` in a scratchpad working dir. Note stacked MRs
+(target branch = another MR's source) and already-merged state — report both.
 
-**Do NOT bulk-fetch the full source of every changed file.** Give reviewers the diff and
-let them read on demand. **This is a quality rule, not a token rule** — measured, it saves
-little (agents read what their lenses require either way: 92% of sources on booking-front!27;
-*more* files on explorer-back!71). What it buys is aim: on `booking-back!31` three of four
-missed defects were in files **not in the diff**, which bulk-loading changed files would
-never have fetched, and the mandatory reads took booking-front!27 from 8 findings to 25.
-The reads that matter are mandatory (see `review-core/references/personas.md` § "Reading
-the code"): whole file for a design-system sweep, whole function for a complexity metric,
-the sibling for U13, the composition root for U5/U14.
+**Reviewers must read what their lenses require.** The reads that matter are mandatory,
+not optional (`review-core/references/personas.md` § "Reading the code"): the whole file
+for a design-system/i18n/dead-code sweep, the whole function for a complexity metric, the
+sibling for U13, the composition root's startup *and* shutdown for U5/U14. Findings are
+**not limited to changed files** — on `booking-back!31` three of four missed defects lived
+in files that were never in the diff.
 
-> Token cost lives elsewhere: `cost ~= tool_uses x (system prompt + tool schemas) + content
-> (paid once, cached)`. The wins are the **minimal-toolset agents** (§2, ~83%/turn) and
-> **skipping generated files** (hard rule 3) — not trimming what reviewers read.
+> **Token note.** Trimming what reviewers read is *not* where cost lives — measured, it
+> saves little (agents read what their lenses need either way) and content is cached and
+> paid once. The wins are the **minimal-toolset agents** (§2, −33% on a real review) and
+> **skipping generated files** (hard rule 3). Do not trade review depth for tokens.
 
 **Material caps (state what you drop — never drop silently).** Before spawning the panel:
 - Skip any single file whose diff exceeds **~15k tokens** (~60KB) — list it as

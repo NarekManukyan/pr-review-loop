@@ -23,13 +23,15 @@ each with `file:line`). A review that surfaces the deep bugs but silently omits 
 "use the design-system token / localize this string" P2s reads as incomplete to the
 author. Depth AND breadth, not one at the expense of the other.
 
-## Reading the code — you are given the diff, you fetch the rest
+## Reading the code — some reads are mandatory
 
-You receive `mr<N>.diff` (unified diff + **±40 lines of context around each hunk**), not
-the full source of every changed file. Bulk-loading whole files cost 3–6× the diff and
-still missed the defects that live *outside* it. **Read on demand — and for the checks
-below the read is MANDATORY, not optional.** A finding you could have proven by opening
-one file is a miss, not a saving.
+You get the diff and the full source of the changed files. That is **not enough** on its
+own: the defects that bite live *outside* the diff (on `booking-back!31` three of four
+misses were in files never in it). **For the checks below the read is MANDATORY, not
+optional.** A finding you could have proven by opening one file is a miss.
+
+Do **not** skip a required read to save tokens — that is not where cost lives (content is
+cached and paid once; the cost is tool schemas, which is why you run on a minimal toolset).
 
 | When | You MUST read |
 |---|---|
