@@ -18,8 +18,8 @@ Both call this engine so review quality is identical and defined once.
 | File | Role |
 |---|---|
 | `references/resolver.md` | Detect stack + libraries → choose which lens pack(s) to load. Run FIRST. |
-| `references/universal-lenses.md` | U1–U12: stack-agnostic review principles (the WHAT). Always applied. |
-| `references/personas.md` | Reviewers A/B/C + **D (Build & Analyze, CI-parity + reachability)**. |
+| `references/universal-lenses.md` | U1–U14: stack-agnostic review principles (the WHAT). Always applied. |
+| `references/personas.md` | Reviewers A/B/C + **D (Build & CI parity, runs on haiku)** + **E (Seams & Blast Radius: U5/U13/U14)**, and the "Reading the code" contract (diff in, reads on demand). |
 | `references/lenses/<stack>.md` | Per-stack idioms (the HOW). Loaded on demand by the resolver. |
 | `references/lenses/README.md` | Pack contract — how to author/extend a stack pack. |
 

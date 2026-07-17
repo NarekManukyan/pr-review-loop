@@ -44,7 +44,7 @@ Read the manifest's dependency list and add every overlay that matches.
 | `@angular/core` | (no pack → universal-only + note) |
 | `vue` / `nuxt` | (no pack → universal-only + note) |
 | `svelte` | (no pack → universal-only + note) |
-| `express` / `fastify` / `koa` (no `@nestjs`) | (no pack → universal-only, apply U1–U12 to the node backend) |
+| `express` / `fastify` / `koa` (no `@nestjs`) | (no pack → universal-only, apply U1–U14 to the node backend) |
 
 **Go:** `go-postgres.md` already selected; deepen with what's imported — `pgx`/`sqlc`
 (SQL sections apply), `cloud.google.com/go/pubsub` or a `river`/outbox pkg (queue

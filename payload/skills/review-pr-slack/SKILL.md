@@ -1,18 +1,28 @@
 ---
 name: review-pr-slack
-description: This skill should be used when the user asks to "review MRs and send to Slack", "review-pr-slack", "panel review these merge requests", "review PR and DM the author", provides GitLab MR / GitHub PR URLs asking for a review delivered as an HTML report via Slack instead of inline comments, or provides a Slack message URL containing MR links to review. Runs a 4-agent panel (3 reviewer personas + a build/analyzer check in an isolated worktree), builds a self-contained GitHub-style HTML report (overview + build status + all comments + fix prompts), and after user confirmation sends a short verdicts-only Slack message — as a DM to the PR author, or as a thread reply when a Slack message URL is provided. Never posts comments on GitLab/GitHub.
+description: This skill should be used when the user asks to "review MRs and send to Slack", "review-pr-slack", "panel review these merge requests", "review PR and DM the author", provides GitLab MR / GitHub PR URLs asking for a review delivered as an HTML report via Slack instead of inline comments, or provides a Slack message URL containing MR links to review. Runs a 5-agent panel (architecture / correctness / perf-quality personas + a build-and-CI check in an isolated worktree + a seams-and-blast-radius reviewer), builds a self-contained GitHub-style HTML report (overview + build status + all comments + fix prompts), and after user confirmation sends a short verdicts-only Slack message — as a DM to the PR author, or as a thread reply when a Slack message URL is provided. Never posts comments on GitLab/GitHub.
 version: 1.0.0
 ---
 
 # Review PR → Slack Report
 
-Run a 3-reviewer panel over one or more GitLab MRs (or GitHub PRs), produce a single self-contained GitHub-style HTML report (overview + inline threaded comments + fix prompts), and announce it with a short verdicts-only Slack message — DM to the PR author, or a thread reply when a Slack message URL is given. **Never post any comments, notes, or overviews on GitLab/GitHub** — the report and Slack are the only outputs.
+Run a 5-reviewer panel over one or more GitLab MRs (or GitHub PRs), produce a single self-contained GitHub-style HTML report (overview + inline threaded comments + fix prompts), and announce it with a short verdicts-only Slack message — DM to the PR author, or a thread reply when a Slack message URL is given. **Never post any comments, notes, or overviews on GitLab/GitHub** — the report and Slack are the only outputs.
 
 ## Hard rules
 
 1. No GitLab/GitHub comments, approvals, or notes — read-only API access.
 2. Before sending anything to Slack, show the user the matched Slack person and get explicit confirmation (AskUserQuestion).
-3. Skip generated files entirely: `*.g.dart`, `*.freezed.dart`, `*.gen.dart`, `*.tailor.dart`, `*.config.dart`, `*.gr.dart`, `*.chopper.dart`, `*.mocks.dart`, `lib/gen/**`, `lib/src/l10n/**`, `pubspec.lock`, lockfiles, `node_modules`, `dist/`. Extend the list from the repo's CLAUDE.md if present.
+3. **Skip generated files entirely — from the diff AND from any read.** The list is
+   **stack-specific: use the loaded lens pack's "Generated / skip" section** (this
+   baseline is Flutter's; a Go repo's is in `go-postgres.md`, etc.), plus anything the
+   repo's CLAUDE.md/.gitignore adds. Baseline: `*.g.dart`, `*.freezed.dart`, `*.gen.dart`,
+   `*.tailor.dart`, `*.config.dart`, `*.gr.dart`, `*.chopper.dart`, `*.mocks.dart`,
+   `lib/gen/**`, `lib/src/l10n/**`, `pubspec.lock`, lockfiles, `node_modules`, `dist/`.
+   **This is the single cheapest token win and it costs zero findings** — measured on
+   explorer-back!71, generated files nobody reviews were **68% of the source fetched and
+   29% of the diff** (64k of swagger output + 30k of sqlc `models.go`), because the skip
+   list was Flutter-shaped and the Go pack's gaps went unapplied. Get this right before
+   optimising anything else.
 4. Read the repo's `CLAUDE.md` first and apply its review standards (FACT vs ASSUMPTION: only provable findings become comments).
 5. Findings reference NEW-file line numbers.
 6. **All Slack SENDS go through the `slack-send` skill** (`scripts/msg.sh` for the verdict message, `scripts/send.sh` for the HTML upload) — never call the MCP `slack_send_message` to deliver the review. The MCP Slack connector is used **only for READING** (`slack_read_thread`, `slack_search_users`) since the scripts don't read. If the CC App token is missing, the fix is to install it (`~/.claude/skills/slack-send/install.sh`), not to send via MCP — file upload is impossible without it, so silently degrading to an MCP message-with-no-file defeats the skill's purpose.
@@ -62,7 +72,7 @@ Input is either (a) MR/PR URLs directly, or (b) **a Slack message URL** — the 
 
 For GitLab use `glab api` (already authenticated); for GitHub use `gh`.
 
-Per MR: metadata (title, author name+username, source/target branch, state, head SHA, **conflict state** — `has_conflicts` / `merge_status` on GitLab; `mergeable` / `mergeStateStatus` on GitHub), then diffs and full files into the scratchpad:
+Per MR: metadata (title, author name+username, source/target branch, state, head SHA, **conflict state** — `has_conflicts` / `merge_status` on GitLab; `mergeable` / `mergeStateStatus` on GitHub), then the diff into the scratchpad:
 
 ```bash
 glab api "projects/<url-encoded-path>/merge_requests/<N>"          # metadata
@@ -70,7 +80,29 @@ glab api "projects/<url-encoded-path>/merge_requests/<N>/diffs?per_page=100"  # 
 glab api "projects/<path>/repository/files/<url-encoded-file>/raw?ref=<sha>"  # full file at head
 ```
 
-Write per-MR unified diffs (generated files excluded) to `mr<N>.diff` and full sources to `mr<N>-files/<path>` in a scratchpad working dir. Note stacked MRs (target branch = another MR's source) and already-merged state — report both in the output.
+Write per-MR unified diffs (generated files excluded — see hard rule 3) to `mr<N>.diff`
+and full sources to `mr<N>-files/<path>` in a scratchpad working dir. Note stacked MRs
+(target branch = another MR's source) and already-merged state — report both.
+
+**Reviewers must read what their lenses require.** The reads that matter are mandatory,
+not optional (`review-core/references/personas.md` § "Reading the code"): the whole file
+for a design-system/i18n/dead-code sweep, the whole function for a complexity metric, the
+sibling for U13, the composition root's startup *and* shutdown for U5/U14. Findings are
+**not limited to changed files** — on `booking-back!31` three of four missed defects lived
+in files that were never in the diff.
+
+> **Token note.** Trimming what reviewers read is *not* where cost lives — measured, it
+> saves little (agents read what their lenses need either way) and content is cached and
+> paid once. The wins are the **minimal-toolset agents** (§2, −33% on a real review) and
+> **skipping generated files** (hard rule 3). Do not trade review depth for tokens.
+
+**Material caps (state what you drop — never drop silently).** Before spawning the panel:
+- Skip any single file whose diff exceeds **~15k tokens** (~60KB) — list it as
+  `not reviewed (too large)` in the overview with its size.
+- Cap total diff material per MR at **~60k tokens**; if exceeded, review the highest-risk
+  files first (source over config/tests/fixtures) and **name every file you skipped**.
+- These caps are the skill's own "no silent caps" rule applied to itself. A skipped file
+  is a **known gap**, not a covered one — say so in the overview and the verdict.
 
 ### 1b. Recall review memory
 
@@ -106,22 +138,45 @@ rules: CLAUDE.md, analysis_options.yaml, .review-memory`. Unknown stack →
 **universal-only** (still a full review). This supplies the stack-appropriate idioms —
 Go/Postgres, NestJS, Flutter-BLoC/MobX, … — instead of a hardcoded Flutter checklist.
 
-### 2. Run the 4-agent panel
+### 2. Run the 5-agent panel
 
-Spawn four agents **in parallel** (Agent tool, `run_in_background: true`). Personas are
-defined in `review-core/references/personas.md`; each applies the universal lenses
+Spawn five agents **in parallel** (Agent tool, `run_in_background: true`).
+
+**Spawn A/B/C/E with `subagent_type: 'review-panel'` and D with
+`subagent_type: 'review-build'`** — the plugin's own agent definitions, which carry a
+**minimal toolset** (`Read, Grep, Glob, Bash`). Do **not** use `general-purpose`: it
+re-sends ~100 unused MCP tool schemas on **every turn** — measured at **~5,420 tok/turn**,
+i.e. ~83% of a reviewer's per-turn cost, for tools a code reviewer never calls
+(a trivial 11-turn agent cost 71,479 tokens as general-purpose vs 11,857 with 4 tools).
+Across a 5-agent panel at ~20 turns each that is **~540k tokens/round of pure schema
+overhead**, and removing it costs nothing — the tools are unused. This is the single
+largest saving in the pipeline; content is cached and paid once, so it is not where the
+money is.
+
+Personas are defined in `review-core/references/personas.md`; each applies the universal lenses
 (`universal-lenses.md`, incl. complexity U11 + merge-conflict-via-`git merge-tree` U9)
 plus the stack `lenses/*.md` the resolver loaded:
 
 - **A — Architecture & Patterns**
 - **B — Correctness & Edge Cases**
 - **C — Performance & Code Quality**
-- **D — Build & Analyze** — CI parity + reachability. Mirrors the repo's **real CI**
-  (reads `.gitlab-ci.yml`/`.github/workflows`, runs its exact lint/test/build incl.
-  formatter gates and `//go:build` tags — not a generic build), greps the composition
-  root for unwired new code, checks head pipeline status, all in an isolated `git
-  worktree` cleaned before removal (never the user's checkout). Full step list in
-  `personas.md`.
+- **D — Build & Analyze (CI parity)** — **spawn with `model: 'haiku'`**. Mechanical:
+  mirrors the repo's **real CI** (reads `.gitlab-ci.yml`/`.github/workflows`, runs its
+  exact lint/test/build incl. formatter gates and `//go:build` tags — not a generic
+  build), checks head pipeline status, in an isolated `git worktree` cleaned before
+  removal (never the user's checkout). **Give D a small context** — the branch, the CI
+  config and the MR's file list; it does not need the diff body or any source.
+- **E — Seams & Blast Radius** — the reviewer for code *outside* the diff: is the new
+  thing wired (U5), drained like its siblings (U14), consistent with its neighbors
+  (U13), and does the far-side consumer have a dedup key (U3)? Reads the composition
+  root / sibling / consumer on demand. Exists because three of four misses on
+  `booking-back!31` lived in exactly those seams.
+
+**Per-agent scoping (keep the panel inside budget).** Pass each agent only what it owns:
+its own persona section + the universal lenses it owns + the loaded pack(s). A/B/C get
+the diff; E gets the diff's inventory of new things (it fetches the unchanged files it
+needs); D gets neither. All reads beyond that are on demand — see `personas.md`
+§ "Reading the code".
 
 Build every persona prompt from the **common context block** in
 `references/reviewer-prompts.md` (it loads personas.md + universal-lenses.md + the
@@ -154,6 +209,7 @@ Write `findings.json` (all entries, sequential `id` field, summaries included) a
           "build": {"compiles": true, "analyzer_errors": 0, "analyzer_warnings": 12,
                      "tool": "dart analyze", "notes": ""},
           "conflicts": false,  "merge_status": "can_be_merged",
+          "skipped_files": [{"path": "…", "reason": "diff > 15k tok", "size": "…"}],
           "conflicts_rechecked_at_delivery": true,  "snapshot_moved": false,
           "discussion": [{"by": "Davit", "quote": "this is intentional, backend clamps it",
                            "resolution": "deferred",
@@ -332,7 +388,7 @@ Lead with results: totals, per-MR verdict + headline findings, the sent Slack me
 
 ## Additional Resources
 
-- **`review-core` skill** (`~/.claude/skills/review-core/`) — the shared review engine: the resolver (stack → lens packs), personas A/B/C/D, universal lenses U1–U12, and the per-stack `lenses/*.md`. This is where review quality is defined; this skill only adds Slack/HTML delivery on top.
+- **`review-core` skill** (`~/.claude/skills/review-core/`) — the shared review engine: the resolver (stack → lens packs), personas A/B/C/D/E, universal lenses U1–U14, and the per-stack `lenses/*.md`. This is where review quality is defined; this skill only adds Slack/HTML delivery on top.
 - **`references/reviewer-prompts.md`** — delivery-only scaffolding: the common context block (which loads review-core), merge/dedupe rules, developer-reply handling, Slack target resolution & verdict-message template
 - **`scripts/build_html.py`** — GitHub-style HTML report generator (reads `findings.json`, `meta.json`, `mr<N>.diff` from CWD)
 - **`slack-send` skill** (`~/.claude/skills/slack-send/`) — the **required** delivery path for step 6: `scripts/msg.sh` posts the verdict message and `scripts/send.sh` uploads the HTML report into the thread, both as the reviewer. Needs a Slack user token in `~/.slack-upload-token`; see that skill's `README.md` / `install.sh`. The Slack MCP connector is read-only in this workflow (thread/user lookups) and is a message-only last resort **only** if the user declines installing the token.
