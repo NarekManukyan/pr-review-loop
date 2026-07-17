@@ -10,6 +10,13 @@ mkdir -p "$HOME/.claude/commands" "$HOME/.claude/skills"
 echo "Installing commands -> ~/.claude/commands/"
 cp "$SRC"/commands/*.md "$HOME/.claude/commands/"
 
+# Reviewer agent definitions. These carry a MINIMAL toolset on purpose: a
+# general-purpose agent re-sends ~100 unused MCP tool schemas every turn
+# (measured ~5.4k tok/turn — the largest single cost in a review round).
+echo "Installing reviewer agents -> ~/.claude/agents/"
+mkdir -p "$HOME/.claude/agents"
+cp "$SRC"/agents/*.md "$HOME/.claude/agents/"
+
 echo "Installing bundled skills -> ~/.claude/skills/"
 # Back up any existing copy OUTSIDE ~/.claude/skills — an in-place "<name>.bak" dir
 # still contains a SKILL.md, so Claude Code would register it as a duplicate skill.

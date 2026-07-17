@@ -5,52 +5,67 @@ All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 
 ## 1.10.0
 
-Token budget + the seams reviewer. Measured on four real MRs: a round cost 103k–652k
-input tokens, 60–85% of it the **full source of every changed file** — loaded *in
-addition to* the diff, and 3–6× its size. On `explorer-back!71` the panel loaded 652k and
-silently truncated. Bulk-loading was also never what caught defects: on `booking-back!31`
-three of four misses were in files **not in the diff**.
+Token cost, measured rather than modelled — plus the seams reviewer. Four controlled
+probes (identical work, one variable each) produced a cost law that fits within 1.4%:
+
+```
+cost ~= tool_uses x (system prompt + TOOL SCHEMAS)  +  content (paid ONCE, cached)
+                     `- ~6,451/turn, of which ~5,420 is schemas -'
+```
+
+Everything below follows from that. Two of the levers this release originally shipped on
+were falsified by the probes and are recorded here as such.
 
 Changed
-- **Reviewers get the diff (±40 lines of hunk context), not the full source of every
-  changed file.** They **read on demand** instead — and the reads that matter are
-  **mandatory**, not optional (`personas.md` § "Reading the code"): the whole file for a
-  design-system/i18n/dead-code sweep, the whole function for a complexity metric, the
-  sibling for U13, the composition root's startup *and* shutdown for U5/U14. Aimed reads,
-  not bulk loads. Line numbers come from the hunk header or the file you read — never
-  estimated.
-- **Material caps, stated not silent.** Skip a file whose diff exceeds ~15k tokens; cap
-  total material ~60k; **name every skipped file** in the overview, `meta.json`
-  (`skipped_files`) and the verdict. A skipped file is a *known gap*, not a covered one —
-  this is the skill's own "no silent caps" rule applied to itself. Reviewer D's tool
-  output is bounded too: quote only cited error lines, count warnings, truncate dumps
-  over ~50 lines.
-- **Reviewer D is now mechanical and runs on `model: 'haiku'`** — CI parity only (U10),
-  with a small context (branch + CI config + file list, no diff body, no source).
+- **Reviewers now spawn as purpose-built agents with a minimal toolset** — new
+  `agents/review-panel.md` (A/B/C/E: `Read, Grep, Glob, Bash`) and `agents/review-build.md`
+  (D: `Bash, Read`, `model: haiku`), installed to `~/.claude/agents/`. They were
+  `general-purpose`, which re-sends **~100 unused MCP tool schemas on every turn**.
+  Measured: an identical trivial 11-turn agent cost **71,479 tokens as general-purpose vs
+  11,857 with 4 tools — an 83% cut**, ~5,420 tok/turn of schemas for tools a code reviewer
+  never calls. Across a 5-agent panel at ~20 turns that is **~540k tokens/round of pure
+  overhead, removed at zero quality cost.** This is the single largest saving in the
+  pipeline and it dwarfs every content-side lever by ~15x.
+- **Generated files are skipped from the diff AND from reads, per the loaded pack** — the
+  skip list was Flutter-shaped, so a Go repo's generated output sailed through. The Go
+  pack said `*.sql.go`, but sqlc also emits `models.go`/`db.go`/`querier.go`, and
+  `docs/swagger/**` was unlisted. Measured on explorer-back!71: generated files were **68%
+  of the source fetched and 29% of the diff** (64k swagger + 30k sqlc). Free, zero risk.
+- **Reviewer D is mechanical again**, CI parity (U10) only, on haiku, with a small context
+  (branch + CI config + file list — no diff body, no source).
+- Material caps, stated not silent: skip a file whose diff exceeds ~15k tokens, cap total
+  ~60k, and **name every skipped file** in the overview, `meta.json` (`skipped_files`) and
+  the verdict. A skipped file is a *known gap*, not a covered one. Reviewer D's tool output
+  is bounded too: quote only cited error lines, count warnings, truncate dumps over ~50 lines.
 
 Added
 - **Reviewer E — Seams & Blast Radius.** Owns **U5** (reachability), **U13** (sibling
-  parity), **U14** (lifecycle) and **U3's cross-service consumer contract** — the lenses
-  that were scattered across A and D, so nobody owned them end to end and nobody looked.
-  One job: *the diff changed something — what unchanged code did it just make wrong?*
-  E reads the composition root / sibling / consumer on demand; it never needed the bulk
-  load. Rendered in the HTML report with its own colour.
+  parity), **U14** (lifecycle) and **U3's cross-service consumer contract** — lenses that
+  were scattered across A and D, so nobody owned them and nobody looked. One job: *the diff
+  changed something — what unchanged code did it just make wrong?* **Validated**: on
+  explorer-back!71 E found a P1 the old panel missed entirely — `di/providers.go:166`, the
+  two new subscribers skip the `processedEvents` dedup ledger that all five siblings on the
+  same subscription use.
+- Reviewers get the diff plus ±40 lines of hunk context and **read on demand**, with the
+  reads that matter **mandatory** (`personas.md` § "Reading the code"): whole file for a
+  design-system/i18n/dead-code sweep, whole function for a complexity metric, the sibling
+  for U13, the composition root's startup *and* shutdown for U5/U14. **Kept for quality,
+  not for tokens** — on booking-front!27 this took the panel from **8 findings to 25**,
+  recovering the design-system class the old prompts dropped (including the exact
+  `copyWith`/`setColor` idiom the human reviewer flags by hand).
 
-**Measured, not modelled — and the savings are MR-shape-dependent.** A/B on
-`booking-front!27` (all-new, small files, 95% diff↔source overlap): the panel read 13 of
-19 sources anyway — because C's design-system sweep *legitimately* needs whole files — so
-material dropped only ~4%. The token win lands on the other shape: MRs touching large
-*existing* files, where sources run 6× the diff (`explorer-back!71`: 23k diff vs 140k
-sources) and reviewers open a fraction of them. Treat ~69% as an untested model for that
-shape, not a claim.
-
-What the A/B *did* prove is quality: **25 findings vs 8** on the same MR — all 7 still-valid
-baseline findings reproduced (P0 mock-in-prod, idempotency retry, emit-after-close,
-error-view/confirm-bar, i18n, domain purity), **plus the design-system class the old run
-dropped** (8 findings, matching the human reviewer's own notes including the
-`copyWith`/`setColor` idiom). The mandatory-read rules and Reviewer E work. Nothing lost.
-**L3's caps stand on their own as a correctness fix**: `explorer-back!71` silently
-truncated at 652k before; now oversized files are named as known gaps.
+Falsified (recorded so it is not re-attempted)
+- **"Bulk-loading full sources costs 3–6x."** Bulk-load != bulk-read: the orchestrator
+  writes files to disk, but an agent's context only grows when it `Read`s. Arm A never
+  opened 104k of the 140k fetched. The 652k figure this release was first pitched on was
+  wrong in kind.
+- **"Read-on-demand cuts tokens."** It does not. On booking-front!27 the panel read 92% of
+  sources anyway; on explorer-back!71 the new contract read *more* (23 files vs 16). Agents
+  read what the lenses require, regardless of instruction.
+- **"Batching tool calls saves tokens."** It does not — cost scales with tool-*uses*, not
+  API round-trips (71,687 batched vs 71,479 serial). It is a ~3x latency win only.
+- **"Re-sent context dominates."** It is cached: +24.9k of content cost +24.9k once, not
+  x10 across turns.
 
 ## 1.9.0
 

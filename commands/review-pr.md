@@ -111,9 +111,13 @@ file is a known gap, not a covered one.
    # GitLab: glab api -X PUT ".../discussions/<id>?resolved=true"
    ```
 
-5. **Run the panel.** Spawn Reviewers A/B/C, **D** (Build & CI parity — `model: 'haiku'`,
-   small context: branch + CI config + file list, no diff body) **and E** (Seams & Blast
-   Radius — the reviewer for code *outside* the diff). Into every persona prompt inject, in precedence order: the universal
+5. **Run the panel.** Spawn Reviewers A/B/C **and E** with
+   `subagent_type: 'review-panel'`, and **D** with `subagent_type: 'review-build'`
+   (Build & CI parity — haiku, small context: branch + CI config + file list, no diff
+   body). **Never spawn a reviewer as `general-purpose`** — it re-sends ~100 unused MCP
+   tool schemas every turn (~5,420 tok/turn measured, ~83% of a reviewer's per-turn
+   cost). The plugin's agents carry only `Read, Grep, Glob, Bash`, which is all a
+   reviewer uses. Into every persona prompt inject, in precedence order: the universal
    lenses → the loaded stack `lenses/*.md` → repo CLAUDE.md+ADRs → repo linter config →
    `.review-memory` recall (+ thread context on re-reviews). Skip generated files per the
    loaded pack's "Generated / skip" list.

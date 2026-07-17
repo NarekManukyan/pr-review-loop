@@ -12,7 +12,17 @@ Run a 5-reviewer panel over one or more GitLab MRs (or GitHub PRs), produce a si
 
 1. No GitLab/GitHub comments, approvals, or notes — read-only API access.
 2. Before sending anything to Slack, show the user the matched Slack person and get explicit confirmation (AskUserQuestion).
-3. Skip generated files entirely: `*.g.dart`, `*.freezed.dart`, `*.gen.dart`, `*.tailor.dart`, `*.config.dart`, `*.gr.dart`, `*.chopper.dart`, `*.mocks.dart`, `lib/gen/**`, `lib/src/l10n/**`, `pubspec.lock`, lockfiles, `node_modules`, `dist/`. Extend the list from the repo's CLAUDE.md if present.
+3. **Skip generated files entirely — from the diff AND from any read.** The list is
+   **stack-specific: use the loaded lens pack's "Generated / skip" section** (this
+   baseline is Flutter's; a Go repo's is in `go-postgres.md`, etc.), plus anything the
+   repo's CLAUDE.md/.gitignore adds. Baseline: `*.g.dart`, `*.freezed.dart`, `*.gen.dart`,
+   `*.tailor.dart`, `*.config.dart`, `*.gr.dart`, `*.chopper.dart`, `*.mocks.dart`,
+   `lib/gen/**`, `lib/src/l10n/**`, `pubspec.lock`, lockfiles, `node_modules`, `dist/`.
+   **This is the single cheapest token win and it costs zero findings** — measured on
+   explorer-back!71, generated files nobody reviews were **68% of the source fetched and
+   29% of the diff** (64k of swagger output + 30k of sqlc `models.go`), because the skip
+   list was Flutter-shaped and the Go pack's gaps went unapplied. Get this right before
+   optimising anything else.
 4. Read the repo's `CLAUDE.md` first and apply its review standards (FACT vs ASSUMPTION: only provable findings become comments).
 5. Findings reference NEW-file line numbers.
 6. **All Slack SENDS go through the `slack-send` skill** (`scripts/msg.sh` for the verdict message, `scripts/send.sh` for the HTML upload) — never call the MCP `slack_send_message` to deliver the review. The MCP Slack connector is used **only for READING** (`slack_read_thread`, `slack_search_users`) since the scripts don't read. If the CC App token is missing, the fix is to install it (`~/.claude/skills/slack-send/install.sh`), not to send via MCP — file upload is impossible without it, so silently degrading to an MCP message-with-no-file defeats the skill's purpose.
@@ -75,18 +85,19 @@ Write per-MR unified diffs (generated files excluded) to `mr<N>.diff`, requestin
 **±40 lines of context around each hunk**. Note stacked MRs (target branch = another
 MR's source) and already-merged state — report both in the output.
 
-**Do NOT bulk-fetch the full source of every changed file.** Measured on real MRs, full
-sources run **3–6× the diff** (explorer-back!71: 23k diff vs 140k sources) and, times the
-panel, blow past the context window — silently truncating, so nobody knows what was
-dropped. It also never paid: on `booking-back!31` three of four missed defects were in
-files **not in the diff**, which bulk-loading changed files would never have fetched.
-*(Honest caveat: on an all-new-files MR reviewers legitimately read most sources anyway —
-the saving there is small. The win is on MRs that touch large existing files. Either way
-the reads are aimed, and the caps below stop the truncation.)*
-Reviewers **read on demand** — and the reads that matter are mandatory (see
-`review-core/references/personas.md` § "Reading the code"): whole file for a
-design-system sweep, whole function for a complexity metric, the sibling for U13, the
-composition root for U5/U14. Aimed reads, not bulk loads.
+**Do NOT bulk-fetch the full source of every changed file.** Give reviewers the diff and
+let them read on demand. **This is a quality rule, not a token rule** — measured, it saves
+little (agents read what their lenses require either way: 92% of sources on booking-front!27;
+*more* files on explorer-back!71). What it buys is aim: on `booking-back!31` three of four
+missed defects were in files **not in the diff**, which bulk-loading changed files would
+never have fetched, and the mandatory reads took booking-front!27 from 8 findings to 25.
+The reads that matter are mandatory (see `review-core/references/personas.md` § "Reading
+the code"): whole file for a design-system sweep, whole function for a complexity metric,
+the sibling for U13, the composition root for U5/U14.
+
+> Token cost lives elsewhere: `cost ~= tool_uses x (system prompt + tool schemas) + content
+> (paid once, cached)`. The wins are the **minimal-toolset agents** (§2, ~83%/turn) and
+> **skipping generated files** (hard rule 3) — not trimming what reviewers read.
 
 **Material caps (state what you drop — never drop silently).** Before spawning the panel:
 - Skip any single file whose diff exceeds **~15k tokens** (~60KB) — list it as
@@ -132,8 +143,20 @@ Go/Postgres, NestJS, Flutter-BLoC/MobX, … — instead of a hardcoded Flutter c
 
 ### 2. Run the 5-agent panel
 
-Spawn five agents **in parallel** (Agent tool, `run_in_background: true`). Personas are
-defined in `review-core/references/personas.md`; each applies the universal lenses
+Spawn five agents **in parallel** (Agent tool, `run_in_background: true`).
+
+**Spawn A/B/C/E with `subagent_type: 'review-panel'` and D with
+`subagent_type: 'review-build'`** — the plugin's own agent definitions, which carry a
+**minimal toolset** (`Read, Grep, Glob, Bash`). Do **not** use `general-purpose`: it
+re-sends ~100 unused MCP tool schemas on **every turn** — measured at **~5,420 tok/turn**,
+i.e. ~83% of a reviewer's per-turn cost, for tools a code reviewer never calls
+(a trivial 11-turn agent cost 71,479 tokens as general-purpose vs 11,857 with 4 tools).
+Across a 5-agent panel at ~20 turns each that is **~540k tokens/round of pure schema
+overhead**, and removing it costs nothing — the tools are unused. This is the single
+largest saving in the pipeline; content is cached and paid once, so it is not where the
+money is.
+
+Personas are defined in `review-core/references/personas.md`; each applies the universal lenses
 (`universal-lenses.md`, incl. complexity U11 + merge-conflict-via-`git merge-tree` U9)
 plus the stack `lenses/*.md` the resolver loaded:
 

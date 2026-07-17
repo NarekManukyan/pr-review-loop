@@ -135,8 +135,21 @@ Mirror `.gitlab-ci.yml` / `.github/workflows`. This org's Go pipelines gate on:
   the pipeline does.
 
 ## Generated / skip
-`*.pb.go`, `*_gen.go`, `*.sql.go` (sqlc), `mock_*.go` / `*_mock.go`, `wire_gen.go`,
-`vendor/`, `bin/`.
+`*.pb.go`, `*_gen.go`, `mock_*.go` / `*_mock.go`, `wire_gen.go`, `vendor/`, `bin/`, and:
+- **sqlc output — the whole directory, not just `*.sql.go`.** sqlc also emits
+  `models.go`, `db.go`, `querier.go`, `copyfrom.go`, none of which match `*.sql.go`.
+  Skip `**/sqlc/**` outright. (explorer-back!71: seven `sqlc/models.go` copies = 30k
+  tokens handed to every reviewer.)
+- **swagger/OpenAPI output — `docs/swagger/**`** (`docs.go`, `swagger.json`,
+  `swagger.yaml`), produced by `swag init`. (Same MR: **64k tokens — 46% of everything
+  the panel fetched.**)
+- Migration files and SQL *queries* are NOT generated — review those.
+
+**Why this matters more than it looks.** Measured on explorer-back!71: **68% of the
+source the panel fetched, and 29% of the diff, were generated files nobody reviews.**
+Excluding them costs zero findings — the rules already say *do NOT flag missing
+codegen*, so do not read it either. This is the cheapest token win in the pipeline, and
+it is free of the read-on-demand trade-off.
 
 ## Notes
 - Reachability (U5) is high-value here: new River/cron workers and Pub/Sub subscribers
