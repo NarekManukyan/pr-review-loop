@@ -31,6 +31,12 @@ MR context: <one line per MR: number, title, target branch, state, stacking rela
 Rules:
 - Only report FACTS provable by pointing at exact code. Verify claims at HEAD, never from
   resolved=true / stale merge_status (universal lens U9).
+- **Findings are NOT limited to changed files.** Unchanged code whose contract or risk
+  THIS diff changes is in scope — the composition root (does the new background task get
+  drained like its siblings? U14), the siblings (does the new endpoint match its
+  neighbors' headers/auth/error mapping? U13), and the consumer on the far side of an
+  event (what do they dedup on? U3). The panel's known failure mode is anchoring on
+  changed lines: review the blast radius, not just the diff.
 - Severity: P0 crash/data-loss/security/broken feature · P1 significant bug/arch
   violation/serious perf · P2 smell/minor.
 - Complexity findings cite the measured value vs the repo's linter threshold (U11).
@@ -165,11 +171,18 @@ Hi <FirstName> :wave: 4-reviewer panel review of your <repo> MRs is ready
 
 *P0: x · P1: y · P2: z*
 
-• <mr_url|!<N> <short title>> — <verdict emoji + word> · build <✅ | ❌ (<e> errors)>, <w> warnings. *<P0/P1 headline(s), if any>*
-• <mr_url|!<M> <short title>> — <verdict> · build ✅, <w> warnings
+• <mr_url|!<N> <short title>> — <verdict emoji + word> · reviewed at `<short_head_sha>` · build <✅ | ❌ (<e> errors)>, <w> warnings. *<P0/P1 headline(s), if any>*
+• <mr_url|!<M> <short title>> — <verdict> · reviewed at `<short_head_sha>` · build ✅, <w> warnings
 
 Full review — annotated diffs, every comment with `file:line`, and copy-paste Fix
 Prompts — is in the attached HTML report :point_down:
 ```
+
+Every bullet states **which snapshot the verdict describes** (`reviewed at <short head
+sha>`) — a verdict without a SHA is unreconcilable once the branch moves. If
+`snapshot_moved` is true for an MR (head moved, or the target advanced between fetch and
+delivery — re-checked with `git merge-tree` at delivery, SKILL.md § 3), add a line rather
+than reporting a stale result:
+`⚠️ Reviewed at \`<short_sha>\`; \`<target>\` has advanced since — re-check conflicts before merging.`
 On re-reviews add: `Addressed your replies: ✅ n resolved · 📌 n deferred · ❌ n still open — details in the report.`
 The HTML report is uploaded into the same thread automatically by `send.sh` (SKILL.md § 6b).

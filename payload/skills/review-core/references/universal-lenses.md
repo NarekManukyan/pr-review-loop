@@ -40,6 +40,18 @@ the downstream service on the wire.
 **Required:** a stable, deterministic idempotency key derived from the originating
 entity, persisted, checked before effect, and propagated to every hop.
 
+**Producer-side event IDs (cross-service).** For any event another service/team
+consumes to move money, the event ID **is** the consumer's dedup key — at-least-once
+delivery gives them nothing else to key on. It must be deterministic and derivable by
+the consumer (e.g. `<event_type>:<aggregate_id>`), never a fresh `uuid.New()` per emit,
+or a redelivery looks like a second, distinct event and the money moves twice.
+**Ask for every cross-service event: what does the consumer dedup on?** Verifying
+exactly-once *inside your own transaction* answers nothing about the far side of the
+outbox. Worked example: `internal/booking/service/cancel.go:196` emits
+`booking.refund_requested` with `ID: uuid.New().String()`; Payments consumes it to
+issue the refund, so every redelivery is a fresh ID → duplicate refund. Required:
+`ID: fmt.Sprintf("booking.refund_requested:%s", bookingID)`.
+
 ## U4 — Security / compliance gates must fail CLOSED
 **Principle:** when auth, signature (HMAC), SCA/3DS, or a policy check can't run, the
 safe default is DENY, never "fall through".
@@ -125,9 +137,50 @@ backward-compatible with already-stored data.
 **Required:** guaranteed cleanup; a migration/compat path for persisted schema changes;
 stream large payloads instead of buffering.
 
+## U13 — Sibling parity (the new thing vs its established neighbors)
+**Principle:** a codebase already encodes its contract in the siblings. Any new
+endpoint / worker / handler / subscriber / provider must be compared against the
+**nearest existing sibling of the same class in the same file or package**, and every
+divergence is either justified or a finding. The diff alone can look correct while
+silently omitting what every neighbor does.
+**Smell:** the new thing differs from its siblings on any of — required headers (e.g.
+`Idempotency-Key`), auth/principal enforcement, error→status mapping,
+registration/lifecycle, timeout/retry policy, logging/metrics.
+**Required:** find the sibling, diff the two by hand, justify or flag each divergence.
+**Evidence rule:** a U13 finding **must cite the sibling's `file:line` alongside the new
+code's** — "X does it, this doesn't" is the whole shape of the finding. Without the
+sibling citation it is an opinion, not a U13.
+**Worked example:** `internal/booking/adapter/handler/booking.go:283-285` — the new
+cancel POST requires no `Idempotency-Key`, while the sibling money-mutating POSTs in the
+same file do. Reviewed against CLAUDE.md, never against its neighbors → missed.
+
+## U14 — Lifecycle: started ≠ drained  *(extension of U5)*
+**Principle:** U5 asks *is it wired?*; U14 asks *is it stopped correctly?* A background
+task that starts but is never joined loses in-flight work on every deploy.
+**Smell:** the diff adds a goroutine / worker / subscriber / ticker / pool, and the
+composition root starts it **without** the join its siblings get — a bare
+`go X.Run(ctx)` next to `wg.Add(1)`-tracked workers; no context cancellation; an
+unbounded drain that can outlive the SIGKILL budget.
+**Required:** for every background task the diff introduces, **read the composition
+root's shutdown path in full — not a grep for the call site** — and verify it is (a)
+joined on shutdown the way its siblings are (WaitGroup/errgroup), (b) context-cancelled,
+(c) drain-bounded. **The rule that catches this: the composition root must be read
+whenever the diff adds a background task, even when that file is not in the diff.**
+A grep that answers "yes, it's wired" and stops is exactly how this is missed.
+**Worked example:** `cmd/server/main.go:85-88` starts `SCAExpiryWorker` under
+`workerWg.Add(1)` / `defer workerWg.Done()` with `:118` `workerWg.Wait()`; `:105-106`
+starts the new reconciler as a bare `go container.Reconciler.Run(reconcilerCtx)` —
+never joined. The asymmetry sits ~20 lines apart in one file that was **not in the
+diff**; the diff gave pre-existing unchanged code a new responsibility.
+
 ---
 
-**Applying these:** each persona (`personas.md`) owns a subset — A: U2, U5, U6, U8;
-B: U1, U3, U4, U7, U9, U12; C: U8, U11; D: U10 + U5's grep. But any reviewer may raise
-any lens if the evidence is theirs. The stack pack tells you what U1–U12 *look like*
-in this repo's language.
+**Applying these:** each persona (`personas.md`) owns a subset — A: U2, U5, U6, U8,
+U13, U3's cross-service consumer contract; B: U1, U3, U4, U7, U9, U12; C: U8, U11;
+D: U10 + U5's grep + U14. But any reviewer may raise any lens if the evidence is
+theirs. The stack pack tells you what U1–U14 *look like* in this repo's language.
+
+**Scope note (U13/U14):** findings are **not limited to changed files**. Unchanged code
+whose contract or risk *this diff changes* is in scope — the composition root, the
+siblings, and the consumer on the far side of an event. The panel's failure mode is
+anchoring on changed lines; review the blast radius, not just the diff.

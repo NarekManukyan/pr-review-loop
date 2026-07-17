@@ -149,10 +149,12 @@ Write `findings.json` (all entries, sequential `id` field, summaries included) a
   "title": "…", "date": "YYYY-MM-DD", "order": [57, 59, 58],
   "57": {"title": "…", "author": "…", "source": "…", "target": "…",
           "state": "merged|opened", "url": "…",
+          "head_sha": "b99e92c8…", "base_sha": "11ea4889…",
           "verdict": "✅ Approve | ⚠️ Approve with minor fixes | 🔄 Request Changes",
           "build": {"compiles": true, "analyzer_errors": 0, "analyzer_warnings": 12,
                      "tool": "dart analyze", "notes": ""},
           "conflicts": false,  "merge_status": "can_be_merged",
+          "conflicts_rechecked_at_delivery": true,  "snapshot_moved": false,
           "discussion": [{"by": "Davit", "quote": "this is intentional, backend clamps it",
                            "resolution": "deferred",
                            "response": "Accepted as deferred — add a TODO + ticket before merge."}],
@@ -162,7 +164,28 @@ Write `findings.json` (all entries, sequential `id` field, summaries included) a
 
 On re-reviews, fill `discussion` per MR from the reviewers' reply resolutions (deduped): each entry renders in the report as a "💬 Thread follow-ups" block in that MR's overview. Resolutions: `resolved` (code proves the fix), `deferred` (author said later/out-of-scope — state the guardrail asked for), `disputed` (reviewer still disagrees — state why, cite code), `clarified` (author was right — finding withdrawn, say so plainly).
 
-Set `conflicts` per MR from step 1's fetch (`has_conflicts` / `merge_status` on GitLab, `mergeable`/`mergeStateStatus` on GitHub). The report shows it as a **Conflicts column**.
+Set `conflicts` per MR from step 1's fetch — but **verify with `git merge-tree`, never the
+API flag alone** (universal lens U9; the flag is lazily computed and goes stale). The
+report shows it as a **Conflicts column**.
+
+**Snapshot honesty.** Record `head_sha` + `base_sha` (the exact commits reviewed) in
+`meta.json`, render both in the HTML report header, and put the **short head SHA** in the
+Slack verdict message. A reader must be able to tell which snapshot a verdict describes —
+without it, a later "but it conflicts now" is impossible to reconcile against what was
+reviewed.
+
+**Re-verify conflicts at DELIVERY time, not only at fetch time.** The target branch moves
+while the panel runs (a real case: clean at 18:09, target advanced at 18:28, branch then
+conflicted — the report still said clean). Immediately before sending:
+
+```bash
+git fetch origin <target> -q
+git merge-tree $(git merge-base <head_sha> origin/<target>) <head_sha> origin/<target> | grep -c '^<<<<<<<' || true
+glab api "projects/<enc>/merge_requests/<N>" --jq '.sha'   # has head moved since fetch?
+```
+If the head moved or the target advanced since the review, set `snapshot_moved: true` and
+**say so in the verdict message** ("reviewed at `<short_sha>`; target has advanced since —
+re-check conflicts") rather than silently reporting a stale result.
 
 Verdict policy: **merge conflicts OR** build broken OR any P0/P1 → 🔄 Request Changes; P2-only → ⚠️ Approve with minor fixes; clean → ✅ Approve. **A conflicting MR is never Approve** — its verdict is `🔄 Request Changes — conflicts with <target>` (also add a P1 conflict finding). Append the build result too, e.g. `🔄 Request Changes — build ❌ (2 analyzer errors)`. Already-merged MRs: note "fold into follow-up"; build + conflict checks skipped.
 

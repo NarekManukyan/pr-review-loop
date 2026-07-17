@@ -5,7 +5,8 @@ Run from a working dir containing:
   findings.json  - list of findings {mr,file,line,severity,reviewer,category,title,body,snippet,id[,plusone]}
                    plus per-MR summaries {mr,reviewer,summary}
   meta.json      - {"title": str, "date": str, "order": [mr,...],
-                    "<mr>": {title,author,source,target,state,url,verdict,fix_prompt}}
+                    "<mr>": {title,author,source,target,state,url,verdict,fix_prompt,
+                             head_sha,base_sha,snapshot_moved}}
   mr<N>.diff     - unified diff per MR (generated files pre-excluded)
 Writes mr-review.html to the same dir.
 """
@@ -66,6 +67,24 @@ def conflict_badge(m):
     if c is False or ms in ('can_be_merged', 'clean', 'mergeable', 'unchecked'):
         return "<span class='bchip bok'>✓ no conflicts</span>"
     return "<span class='bchip bskip'>conflicts unknown</span>"
+
+def snapshot_badge(m):
+    """Which snapshot this verdict describes — meta['<mr>']['head_sha'/'base_sha'].
+
+    A verdict without a SHA is unreconcilable once the branch moves, so state the
+    reviewed commits; flag when the head/target moved between fetch and delivery.
+    """
+    head, base = (m.get('head_sha') or '')[:8], (m.get('base_sha') or '')[:8]
+    if not head:
+        return ''
+    out = (f"<span class='bchip bskip' title='The exact commits reviewed'>"
+           f"reviewed at <code>{esc(head)}</code>"
+           + (f" (base <code>{esc(base)}</code>)" if base else '') + "</span>")
+    if m.get('snapshot_moved'):
+        out += ("<span class='bchip bfail' title='Head moved or target advanced between "
+                "fetch and delivery — re-check conflicts'>⚠ snapshot moved since review</span>")
+    return out
+
 
 def has_conflicts(m):
     c = m.get('conflicts')
@@ -276,6 +295,7 @@ def render_mr(mr):
           {build_badge(m)}
           {conflict_badge(m)}
           <span>{esc(m['author'])} wants to merge <code>{esc(m['source'])}</code> → <code>{esc(m['target'])}</code></span>
+          {snapshot_badge(m)}
         </div>
       </div>
       <div class="overview">
