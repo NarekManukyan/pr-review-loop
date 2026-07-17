@@ -80,6 +80,9 @@ sources run **3–6× the diff** (explorer-back!71: 23k diff vs 140k sources) an
 panel, blow past the context window — silently truncating, so nobody knows what was
 dropped. It also never paid: on `booking-back!31` three of four missed defects were in
 files **not in the diff**, which bulk-loading changed files would never have fetched.
+*(Honest caveat: on an all-new-files MR reviewers legitimately read most sources anyway —
+the saving there is small. The win is on MRs that touch large existing files. Either way
+the reads are aimed, and the caps below stop the truncation.)*
 Reviewers **read on demand** — and the reads that matter are mandatory (see
 `review-core/references/personas.md` § "Reading the code"): whole file for a
 design-system sweep, whole function for a complexity metric, the sibling for U13, the

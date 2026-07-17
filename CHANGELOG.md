@@ -36,9 +36,21 @@ Added
   E reads the composition root / sibling / consumer on demand; it never needed the bulk
   load. Rendered in the HTML report with its own colour.
 
-Net: modelled ~686k → ~215k per round on `explorer-back!71` (~69%) **while adding a
-reviewer**. Gated on an A/B against booking-front!27 and minitok.go!1293 — a token cut
-that loses findings is a regression, not a win.
+**Measured, not modelled — and the savings are MR-shape-dependent.** A/B on
+`booking-front!27` (all-new, small files, 95% diff↔source overlap): the panel read 13 of
+19 sources anyway — because C's design-system sweep *legitimately* needs whole files — so
+material dropped only ~4%. The token win lands on the other shape: MRs touching large
+*existing* files, where sources run 6× the diff (`explorer-back!71`: 23k diff vs 140k
+sources) and reviewers open a fraction of them. Treat ~69% as an untested model for that
+shape, not a claim.
+
+What the A/B *did* prove is quality: **25 findings vs 8** on the same MR — all 7 still-valid
+baseline findings reproduced (P0 mock-in-prod, idempotency retry, emit-after-close,
+error-view/confirm-bar, i18n, domain purity), **plus the design-system class the old run
+dropped** (8 findings, matching the human reviewer's own notes including the
+`copyWith`/`setColor` idiom). The mandatory-read rules and Reviewer E work. Nothing lost.
+**L3's caps stand on their own as a correctness fix**: `explorer-back!71` silently
+truncated at 652k before; now oversized files are named as known gaps.
 
 ## 1.9.0
 
