@@ -3,6 +3,21 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.12.1
+
+Added
+- **`review-stats` CLI — the stats work from any terminal**, not just inside Claude Code
+  (`review-stats`, `review-stats --json`, `review-stats ~/code/foo`). Claude Code puts a
+  plugin's `bin/` on PATH automatically, but that only applies *inside* Claude Code — a
+  real terminal never sees it — so `install.sh` also links the wrapper into
+  `~/.local/bin` and warns if that is not on your PATH.
+
+Docs
+- README documents `/review-pr-stats` + the `review-stats` CLI, what the metrics mean
+  (and that **% disputed** is the one worth watching), the verdict roll-ups, and —
+  explicitly — that savings and per-reviewer cost are **not** reported because Claude Code
+  does not persist subagent turns.
+
 ## 1.12.0
 
 Added

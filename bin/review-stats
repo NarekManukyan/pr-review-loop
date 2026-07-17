@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# review-stats — real token usage + review activity for the repo you're standing in.
+#
+# Works from any terminal (installed to ~/.local/bin by install.sh) and from
+# inside Claude Code (this plugin's bin/ is added to PATH automatically).
+#
+#   review-stats                 # this repo
+#   review-stats ~/code/foo      # another repo
+#   review-stats --json          # machine-readable
+#   review-stats --sessions 20   # widen the token window
+#
+# Everything it prints is read from disk — Claude Code's own session logs and the
+# repo's .review-memory/decisions.jsonl. Nothing is estimated.
+set -euo pipefail
+
+# Prefer the installed skill; fall back to the plugin payload (running from a clone).
+CANDIDATES=(
+  "$HOME/.claude/skills/review-memory/scripts/stats.py"
+  "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/payload/skills/review-memory/scripts/stats.py"
+)
+
+STATS=""
+for c in "${CANDIDATES[@]}"; do
+  [ -f "$c" ] && { STATS="$c"; break; }
+done
+
+if [ -z "$STATS" ]; then
+  echo "review-stats: cannot find stats.py" >&2
+  echo "  looked in:" >&2
+  printf '    %s\n' "${CANDIDATES[@]}" >&2
+  echo "  fix: run the plugin's install.sh, or restart Claude Code to let the" >&2
+  echo "       SessionStart hook sync the bundled skills into ~/.claude/skills." >&2
+  exit 1
+fi
+
+command -v python3 >/dev/null 2>&1 || { echo "review-stats: python3 not found" >&2; exit 1; }
+
+# No path arg given -> default to the current directory, but still allow flags.
+first="${1:-}"
+if [ $# -eq 0 ] || [ "${first#-}" != "$first" ]; then
+  exec python3 "$STATS" . "$@"
+fi
+exec python3 "$STATS" "$@"
