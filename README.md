@@ -1,7 +1,7 @@
 # pr-review-loop
 
 A Claude Code plugin that turns PR review into a repeatable, self-improving loop.
-Three review commands share one 4-agent review panel and a **per-repo memory** that
+The review commands share one **5-agent panel** and a **per-repo memory** that
 learns from how developers respond — so across an 8-round PR it stops re-raising
 things the team already dismissed, and remembers what to keep an eye on.
 
@@ -18,6 +18,7 @@ things the team already dismissed, and remembers what to keep an eye on.
 - [Slack setup](#slack-setup)
 - [How it works (under the hood)](#how-it-works-under-the-hood)
 - [Commands](#commands)
+- [Stack detection & lens packs](#stack-detection--lens-packs)
 - [Loop / automation](#loop--automation)
 - [Review memory](#review-memory)
 - [Reactions = PR state](#reactions--pr-state)
@@ -37,10 +38,11 @@ things the team already dismissed, and remembers what to keep an eye on.
 | `/review-pr-slack <PR URLs \| Slack msg URL>` | an HTML report + a short Slack verdict | rich review without touching the PR; team visibility |
 | `/review-pr-watch [owner/repo]` | drives `/review-pr` in a loop | auto-review PRs you're requested on |
 | `/review-pr-slack-watch #channel` | drives `/review-pr-slack` in a loop | auto-review PRs posted in a channel |
+| `/review-pr-stats` · CLI `review-stats` | your terminal | real token usage + the review scoreboard (approvals, P0/P1, disputes) |
 
-All of them run the **same 4-agent panel** and share the **same per-repo memory**.
+All of them run the **same 5-agent panel** and share the **same per-repo memory**.
 The two `*-watch` commands are one poll cycle each — wrap them in `/loop` to run
-continuously.
+continuously. `review-stats` reports what the loop produced.
 
 ---
 
@@ -112,7 +114,7 @@ Two options `/review-pr-init` offers:
 Every review, whichever command triggers it, runs the same pipeline:
 
 ```
-trigger ─▶ recall memory ─▶ 4-agent panel ─▶ report ─▶ deliver ─▶ record memory
+trigger ─▶ recall memory ─▶ 5-agent panel ─▶ report ─▶ deliver ─▶ record memory
              ▲                                                        │
              └───────────────── next round ◀──────────────────────────┘
 ```
@@ -124,19 +126,26 @@ trigger ─▶ recall memory ─▶ 4-agent panel ─▶ report ─▶ deliver �
    and libraries (Flutter BLoC/MobX/Riverpod/Provider, Go/Postgres, NestJS, …) and loads
    the matching **lens pack(s)** on top of stack-agnostic **universal lenses**. Unknown
    stack → universal-only fallback. See [Stack detection & lens packs](#stack-detection--lens-packs).
-3. **4-agent panel** — four reviewers run in parallel, each applying the universal
-   lenses + the loaded stack pack:
+3. **5-agent panel** — five reviewers run in parallel, each applying the universal
+   lenses + the loaded stack pack. They run on a **minimal toolset** (`Read/Grep/Glob/Bash`)
+   — measured 33% cheaper than general-purpose agents, at no quality cost:
    - **A – architecture & patterns** (layering, DI, state management, atomicity, reachability)
    - **B – correctness & edge cases** (logic, null-safety, races/TOCTOU, idempotency, fail-closed security)
    - **C – performance & quality** (hot-path work, complexity, naming, dead code, observability)
-   - **D – build & analyze** (isolated worktree; mirrors the repo's **real CI** — formatter/
-     linter/analyzer incl. build tags — plus a reachability grep; errors are blockers)
+   - **D – build & CI parity** (isolated worktree; mirrors the repo's **real CI** —
+     formatter/linter/analyzer incl. build tags; errors are blockers; runs on haiku)
+   - **E – seams & blast radius** (the code *outside* the diff: is the new thing wired,
+     drained like its siblings, consistent with its neighbours, and what does the
+     downstream consumer dedup on?)
 4. **Report** — findings are merged and de-duplicated (overlapping reviewers become
    one thread with "+1" replies), tagged P0/P1/P2, with a copy-paste fix prompt.
 5. **Deliver** — inline (`/review-pr`) or an HTML report + Slack verdict
    (`/review-pr-slack`).
 6. **Record memory** — findings + how the developer responded are written to a
-   committed `.review-memory/` folder, feeding the next round.
+   committed `.review-memory/` folder, feeding the next round. One **verdict roll-up**
+   per reviewed MR×round is recorded alongside them (`kind:"review"` — verdict, head SHA,
+   P0/P1/P2 counts, build, conflicts) so `review-stats` can count approvals; roll-ups are
+   stats only and are excluded from recall, so they can never suppress a finding.
 
 Two loops sit on top:
 
@@ -154,12 +163,12 @@ Two loops sit on top:
 Review knowledge is split into two layers so the same engine works across every stack
 without a per-stack fork of the commands:
 
-- **Universal lenses** (`review-core/references/universal-lenses.md`, U1–U12) —
+- **Universal lenses** (`review-core/references/universal-lenses.md`, U1–U14) —
   stack-agnostic principles that hold in any language: check-then-act races, write+event
   atomicity, idempotency on money/events, fail-closed security gates, reachability
   (defined ≠ wired), spec/AC match, test-effectiveness, stale-doc-after-rename, verify at
   HEAD (don't trust `resolved`/stale merge flags), CI parity, complexity, resource
-  lifecycle.
+  lifecycle, **sibling parity**, and **lifecycle (started ≠ drained)**.
 - **Stack lens packs** (`review-core/references/lenses/*.md`) — the idioms of one stack:
   the concrete shape those principles take (e.g. Go SQL `FOR UPDATE`/CAS, Flutter
   `copyWith` reset, NestJS provider wiring). Loaded only when detected.
@@ -203,6 +212,31 @@ Same panel, but **never comments on the PR**. Produces:
 
 Give it a **Slack message URL** and it reads the whole thread, extracts every PR
 link, reviews them, and replies the verdict there — the basis for the Slack watcher.
+
+### `/review-pr-stats`  ·  CLI: `review-stats`
+
+Real token usage + the review scoreboard, **read from disk — nothing estimated**.
+
+```bash
+review-stats               # this repo, from any terminal (no Claude Code needed)
+review-stats --json        # machine-readable
+review-stats --sessions 20 # widen the token window
+```
+
+- **token usage** — from Claude Code's own session logs (`~/.claude/projects/<slug>/*.jsonl`).
+  The number to watch is **cache hit rate**: high (>90%) means the prompt cache is working
+  and content is paid ~once; low means caches keep re-warming.
+- **review scoreboard** — from `.review-memory/decisions.jsonl`: reviews (MR × round), MRs,
+  rounds, findings, **P0 / P1 + blockers**, **approved vs request-changes (+%)**, the
+  dev-verdict split with **% fixed / % disputed**, and the recurring findings ripe to distill.
+  The useful one is **% disputed** — it means the reviewers are wrong about *this repo*, so
+  `rules.md` / CLAUDE.md needs the fix, not the code.
+
+**What it deliberately does not report: your token savings, or per-reviewer cost.**
+Claude Code does not persist subagent turns (verified: zero sidechain turns across every
+project log; `subagent_tokens` never reaches disk), so a review's true cost cannot be
+attributed and the counterfactual is not measurable. The totals shown are **main-thread
+only — a review's real cost is higher**. Rather than invent a number, the command says so.
 
 ### `/review-pr-watch [owner/repo]`
 One watch cycle for `/review-pr`. Finds PRs where you're a requested reviewer, skips
