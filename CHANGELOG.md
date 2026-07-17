@@ -3,6 +3,26 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.12.0
+
+Added
+- **Verdict roll-ups — reviews, approvals and blockers are now countable.** The panel
+  computed a verdict into `meta.json` every round and then threw it away, so
+  "how many were approved?" was unanswerable from disk. `memory.py record` now accepts a
+  `reviews` array — one roll-up per reviewed `(mr, round)`:
+  `{mr, round, verdict, head_sha, p0, p1, p2, build, conflicts}` — stored as
+  `kind:"review"`. Both front-ends emit it.
+  **Roll-ups are stats, never findings**: they carry no signature and are explicitly
+  excluded from `recall`, so they can never suppress or re-raise a real finding
+  (asserted: a resolved finding still surfaces while the roll-up stays out).
+- **`/review-pr-stats` now reports the review scoreboard**: reviews (MR x round), MRs,
+  rounds, findings, **P0 / P1 and total blockers**, **approved vs request-changes (+ %)**,
+  the dev-verdict split with **% fixed** and **% disputed** (a high dispute rate means the
+  reviewers are wrong about this repo — check `rules.md`/CLAUDE.md), and the recurring
+  findings ripe to distill.
+  Reviews/MRs/rounds/P0/P1 are derivable from existing corpora and work retroactively;
+  verdict counts start accruing on the next recorded review.
+
 ## 1.11.0
 
 Added

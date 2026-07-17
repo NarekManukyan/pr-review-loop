@@ -1,7 +1,7 @@
 {
   "name": "pr-review-loop",
   "description": "PR review toolkit for Claude Code: /review-pr panel (inline) + /review-pr-watch loop, /review-pr-slack (HTML report + Slack verdict) + /review-pr-slack-watch loop with reactions as PR state. Self-improving per-repo review memory learns from developer responses across rounds; never overrides CLAUDE.md/ADRs.",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "author": {
     "name": "NarekManukyan"
   },

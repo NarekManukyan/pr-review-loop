@@ -38,6 +38,15 @@ record input JSON:
     ]
   }
 signature is optional; if omitted it is derived from file stem + category + title.
+
+  Optionally add ONE roll-up per reviewed (mr, round) so verdicts are countable —
+  findings alone cannot answer "how many were approved?":
+    "reviews": [
+      {"mr": 58, "round": 2, "verdict": "Request Changes", "head_sha": "abc123",
+       "p0": 1, "p1": 3, "p2": 7, "build": "failed", "conflicts": false}
+    ]
+  These are stored with kind="review", carry no signature, and are EXCLUDED from
+  recall — they are stats, never findings, and must never suppress a real finding.
 """
 import argparse, json, os, re, sys, shutil, subprocess
 
@@ -304,12 +313,15 @@ def cmd_recall(root, args):
     # Sticky human watch items — surface FIRST, always, until explicitly closed.
     # Deliberately LOOSE: a human flagged these, so a stray extra line costs far
     # less than silently dropping one the reviewer was told to inspect.
+    # kind='review' rows are verdict roll-ups for stats, never findings — they must
+    # not reach suppress/verify or they would silently mute real findings.
+    FIND = lambda e: e.get('kind') not in ('watch', 'review')
     watch = [e for e in latest.values()
              if e.get('kind') == 'watch' and e.get('dev_resolution') == 'open' and loose(e)]
     suppress = [e for e in latest.values()
-                if e.get('kind') != 'watch' and e.get('dev_resolution') in SUPPRESS and relevant(e)]
+                if FIND(e) and e.get('dev_resolution') in SUPPRESS and relevant(e)]
     verify = [e for e in latest.values()
-              if e.get('kind') != 'watch' and e.get('dev_resolution') in VERIFY and relevant(e)]
+              if FIND(e) and e.get('dev_resolution') in VERIFY and relevant(e)]
 
     if watch:
         print("=== ⚠ CARRY-FORWARD WATCH ITEMS — a human flagged these; inspect this round ===")
@@ -368,7 +380,8 @@ def cmd_recall(root, args):
 def cmd_record(root, args):
     payload = json.load(open(args.input, encoding='utf-8'))
     entries = payload.get('entries', [])
-    if not entries:
+    reviews = payload.get('reviews', [])
+    if not entries and not reviews:
         print("no entries to record")
         return
     common = {k: payload.get(k) for k in ('stack', 'commit', 'date') if payload.get(k)}
@@ -385,7 +398,19 @@ def cmd_record(root, args):
                 rec['signature'] = derive_signature(rec)
             f.write(json.dumps(rec, ensure_ascii=False) + '\n')
             n += 1
-    print(f"recorded {n} decision(s) -> {path}")
+        # One ROLL-UP record per reviewed (mr, round): the verdict and what drove
+        # it. Findings alone cannot answer "how many were approved?" — the verdict
+        # was computed into meta.json and then thrown away. kind='review' records
+        # are roll-ups, NOT findings: they carry no signature and are excluded from
+        # recall (see cmd_recall) so they can never suppress or re-raise anything.
+        for r in reviews:
+            rec = dict(common)
+            rec.update(r)
+            rec['kind'] = 'review'
+            rec.pop('signature', None)
+            f.write(json.dumps(rec, ensure_ascii=False) + '\n')
+            n += 1
+    print(f"recorded {len(entries)} finding(s) + {len(reviews)} review roll-up(s) -> {path}")
 
     # Best-effort fast (no-LLM) graphify update so semantic recall stays fresh.
     # The heavier full/LLM build + community detection is a periodic distill task

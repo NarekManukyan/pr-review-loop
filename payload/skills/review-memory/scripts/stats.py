@@ -89,12 +89,27 @@ def effective_input(s):
             + s["input_tokens"])
 
 
+def _verdict_bucket(v):
+    """Normalise a verdict string to approve / minor / changes."""
+    t = (v or "").lower()
+    if "request" in t or "changes" in t or "blocked" in t:
+        return "request_changes"
+    if "minor" in t:
+        return "approve_minor"
+    if "approve" in t:
+        return "approve"
+    return "other"
+
+
 def review_activity(repo_root):
     p = os.path.join(repo_root, ".review-memory", "decisions.jsonl")
     if not os.path.exists(p):
         return None
     sev = collections.Counter(); res = collections.Counter()
-    rounds = set(); mrs = set(); sigs = collections.Counter(); n = 0
+    rounds = set(); mrs = set(); sigs = collections.Counter()
+    findings = 0
+    verdicts = collections.Counter(); rollups = 0
+    pairs = set()          # (mr, round) — a "review" even without a roll-up
     for line in open(p, errors="ignore"):
         line = line.strip()
         if not line:
@@ -103,16 +118,26 @@ def review_activity(repo_root):
             d = json.loads(line)
         except Exception:
             continue
-        n += 1
-        sev[d.get("severity", "?")] += 1
-        res[d.get("dev_resolution", "open")] += 1
+        kind = d.get("kind", "finding")
+        if d.get("mr") is not None:
+            mrs.add(str(d["mr"]))
+            if d.get("round") is not None:
+                pairs.add((str(d["mr"]), d["round"]))
         if d.get("round") is not None:
             rounds.add(d["round"])
-        if d.get("mr") is not None:
-            mrs.add(d["mr"])
+        if kind == "review":
+            rollups += 1
+            verdicts[_verdict_bucket(d.get("verdict"))] += 1
+            continue
+        if kind == "watch":
+            continue
+        findings += 1
+        sev[d.get("severity", "?")] += 1
+        res[d.get("dev_resolution", "open")] += 1
         if d.get("signature"):
             sigs[d["signature"]] += 1
-    return {"entries": n, "rounds": len(rounds), "mrs": len(mrs),
+    return {"findings": findings, "rounds": len(rounds), "mrs": len(mrs),
+            "reviews": len(pairs), "rollups": rollups, "verdicts": dict(verdicts),
             "severity": dict(sev), "resolutions": dict(res),
             "repeat": [(s, c) for s, c in sigs.most_common(5) if c > 1]}
 
@@ -173,12 +198,32 @@ def main():
     if not activity:
         print("  none yet — created on the first review (memory.py record)\n")
     else:
-        print(f"  MRs reviewed  {activity['mrs']:>6}   rounds {activity['rounds']:>3}   findings {activity['entries']:>4}")
-        print(f"  severity      {activity['severity']}")
-        print(f"  dev verdicts  {activity['resolutions']}")
-        if activity["repeat"]:
+        a_ = activity
+        sev = a_["severity"]; p0 = sev.get("P0", 0); p1 = sev.get("P1", 0)
+        print(f"  reviews (MR x round) {a_['reviews']:>5}      MRs {a_['mrs']:>4}      rounds {a_['rounds']:>3}")
+        print(f"  findings             {a_['findings']:>5}      P0 {p0:>5}      P1 {p1:>5}   (blockers: {p0+p1})")
+        print(f"  severity split       {sev}")
+        v = a_["verdicts"]
+        if a_["rollups"]:
+            appr = v.get("approve", 0) + v.get("approve_minor", 0)
+            chg = v.get("request_changes", 0)
+            tot = appr + chg
+            print(f"  verdicts             approved {appr:>4}   request-changes {chg:>4}"
+                  + (f"   ({100*appr/tot:.0f}% approved)" if tot else ""))
+            print(f"                       {v}")
+        else:
+            print("  verdicts             not recorded yet — roll-ups start on the next")
+            print("                       review (see 'reviews' in the record contract).")
+        r = a_["resolutions"]
+        acted = r.get("resolved", 0); disp = r.get("disputed", 0)
+        known = sum(r.values()) - r.get("open", 0)
+        print(f"  dev verdicts         {r}")
+        if known:
+            print(f"                       {100*acted/known:.0f}% of answered findings were fixed"
+                  f" · {100*disp/known:.0f}% disputed (high => reviewers wrong here)")
+        if a_["repeat"]:
             print("  recurring (ripe to distill into CLAUDE.md / an ADR):")
-            for s, c in activity["repeat"]:
+            for s, c in a_["repeat"]:
                 print(f"    x{c}  {s}")
         print()
 
