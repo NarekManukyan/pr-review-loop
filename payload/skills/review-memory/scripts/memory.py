@@ -208,6 +208,76 @@ def cmd_close(root, args):
 
 
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+# Relevance for `recall`.
+#
+# These records are keyed by FILE and carry developer state (disputed/deferred/…),
+# so recall is a lookup — "what did we already decide about these files" — not a
+# similarity search. A wrong match here can SUPPRESS a real finding, so matching
+# is deliberately strict and path-anchored.
+#
+# The old filter was `any(token in haystack)` over every field, which made any
+# area string containing a common word select the whole corpus (on a real repo:
+# 'dart' matched 54/54 decisions, 'lib' 52/54) — i.e. no filter at all.
+
+# A token matching more than this share of the corpus carries no signal — let the
+# corpus decide what's generic instead of hardcoding a stoplist that rots. This
+# applies to path segments too: 'lib', 'view', 'mobx' are structural in one repo
+# and discriminating in another, so measure rather than assume.
+GENERIC_DF = 0.5
+
+
+def _hay(e):
+    return (f"{e.get('file','')} {e.get('area','')} {e.get('signature','')} "
+            f"{e.get('title','')} {e.get('text','')}").lower()
+
+
+def _segments(p):
+    return [s for s in re.split(r'[/\\]', (p or '').lower()) if s]
+
+
+def make_relevant(decisions, area, loose=False):
+    """-> predicate(decision) -> bool, for an `--area` string.
+
+    Strict mode (suppress/verify): a decision matches when its file shares a
+    NON-generic path segment with the area, or when an informative (low document
+    frequency) keyword hits. Loose mode (watch items): the old any-token match.
+    """
+    tokens = [t.lower() for t in re.split(r'[\s,]+', area or '') if t]
+    if not tokens:
+        return lambda e: True
+    if loose:
+        return lambda e: any(t in _hay(e) for t in tokens)
+
+    paths = [t for t in tokens if '/' in t or re.search(r'\.\w{1,5}$', t)]
+    words = [t for t in tokens if t not in paths]
+
+    n = len(decisions) or 1
+    cutoff = GENERIC_DF * n
+
+    # Drop keywords that select most of the corpus — they discriminate nothing.
+    hays = [_hay(e) for e in decisions]
+    words = [w for w in words if sum(1 for h in hays if w in h) <= cutoff]
+
+    # Same treatment for path segments, measured against the files on record:
+    # a segment like 'view' or 'lib' that appears in most files selects nothing.
+    file_segs = [set(_segments(e.get('file'))) for e in decisions]
+    qsegs = {s for p in paths for s in _segments(p)}
+    qsegs = {s for s in qsegs if sum(1 for fs in file_segs if s in fs) <= cutoff}
+
+    # Nothing discriminating survived — fall back to showing everything rather
+    # than silently hiding memory the reviewer needs.
+    if not qsegs and not words:
+        return lambda e: True
+
+    def relevant(e):
+        if qsegs and (set(_segments(e.get('file'))) & qsegs):
+            return True
+        return bool(words) and any(w in _hay(e) for w in words)
+
+    return relevant
+
+
 def cmd_recall(root, args):
     d = mem_dir(root)
     if not os.path.isdir(d):
@@ -228,17 +298,14 @@ def cmd_recall(root, args):
         return
 
     latest = latest_by_signature(decisions)
-    tokens = [t.lower() for t in re.split(r'[\s,]+', args.area or '') if t]
-
-    def relevant(e):
-        if not tokens:
-            return True
-        hay = f"{e.get('file','')} {e.get('area','')} {e.get('signature','')} {e.get('title','')} {e.get('text','')}".lower()
-        return any(t in hay for t in tokens)
+    relevant = make_relevant(list(latest.values()), args.area)
+    loose = make_relevant(list(latest.values()), args.area, loose=True)
 
     # Sticky human watch items — surface FIRST, always, until explicitly closed.
+    # Deliberately LOOSE: a human flagged these, so a stray extra line costs far
+    # less than silently dropping one the reviewer was told to inspect.
     watch = [e for e in latest.values()
-             if e.get('kind') == 'watch' and e.get('dev_resolution') == 'open' and relevant(e)]
+             if e.get('kind') == 'watch' and e.get('dev_resolution') == 'open' and loose(e)]
     suppress = [e for e in latest.values()
                 if e.get('kind') != 'watch' and e.get('dev_resolution') in SUPPRESS and relevant(e)]
     verify = [e for e in latest.values()
