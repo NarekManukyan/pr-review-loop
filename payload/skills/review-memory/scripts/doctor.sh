@@ -32,7 +32,7 @@ if [ -f "$MEM" ] && python3 "$MEM" stats . >/dev/null 2>&1; then pass "memory.py
 
 echo
 echo "commands (~/.claude/commands):"
-for c in review-pr review-pr-watch review-pr-slack-watch; do
+for c in review-pr review-pr-watch review-pr-slack-watch review-pr-stats; do
   [ -f "$HOME/.claude/commands/$c.md" ] && pass "/$c" || warn "/$c not in ~/.claude/commands (marketplace installs discover it from the plugin instead)"
 done
 

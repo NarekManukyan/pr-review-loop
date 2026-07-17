@@ -3,6 +3,25 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.11.0
+
+Added
+- **`/review-pr-stats`** — real token usage + review activity, read from disk, never
+  estimated. Token figures come from Claude Code's own session logs
+  (`~/.claude/projects/<slug>/*.jsonl`: `input_tokens`, `output_tokens`,
+  `cache_read_input_tokens`, `cache_creation_input_tokens`); review figures from this
+  repo's `.review-memory/decisions.jsonl` (MRs, rounds, severity split, developer
+  verdicts, and the recurring findings that are ripe to distill into CLAUDE.md/an ADR).
+  `--json` for scripting.
+  **Deliberately does NOT report savings or per-reviewer cost.** Claude Code does not log
+  subagent turns — verified: 0 sidechain turns across 49k+ logged turns, and
+  `subagent_tokens` is never persisted — so a review's true cost cannot be attributed,
+  and the counterfactual ("what would general-purpose have cost?") is not measurable from
+  disk. The command states this rather than inventing a number. The v1.10.0 probe
+  constants are printed as labelled reference only.
+  Incidentally confirms the v1.10.0 cache finding on real data: of 245.9M input tokens in
+  a heavy session, **99.999% were cache reads** — content really is paid ~once.
+
 ## 1.10.0
 
 The measured token fix, plus the seams reviewer. Four controlled probes (identical work,

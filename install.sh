@@ -57,6 +57,7 @@ echo "  /review-pr-slack <PR_URLs | slack-msg>  panel review -> HTML report + Sl
 echo "  /review-pr-slack-watch #channel         one watch cycle (wrap in /loop to run continuously)"
 echo "  /review-pr-init                         guided setup (PR platform required; Slack/graphify optional)"
 echo "  /review-pr-doctor                       check setup (auth, skills, token, graphify, shiki)"
+echo "  /review-pr-stats                        real token usage + review activity (from logs)"
 echo
 echo "Prerequisites:"
 echo "  - gh CLI authenticated (or glab for GitLab)"
