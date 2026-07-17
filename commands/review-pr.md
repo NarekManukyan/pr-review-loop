@@ -43,7 +43,9 @@ skip any single file whose diff exceeds ~15k tokens, cap total material ~60k tok
    ```bash
    python3 ~/.claude/skills/review-memory/scripts/memory.py record . --input decisions.json
    ```
-   `decisions.json` = `{"stack","commit","date","entries":[{mr,file,line,category,severity,title,dev_resolution,rationale,reviewer,round}]}`;
+   `decisions.json` = `{"stack","commit","date","entries":[{mr,file,line,category,severity,title,dev_resolution,rationale,reviewer,round}],"reviews":[{mr,round,verdict,head_sha,p0,p1,p2,build,conflicts}]}`.
+   **Always emit the `reviews` roll-up** — one per reviewed MR, canonical findings only —
+   or the verdict is lost and `/review-pr-stats` cannot count approved vs request-changes;
    `dev_resolution` ∈ open|resolved|deferred|disputed|clarified. Omit `signature`
    (auto-derives). Full contract: the `review-memory` skill.
 

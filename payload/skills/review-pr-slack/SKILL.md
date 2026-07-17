@@ -319,6 +319,15 @@ After the verdict is sent, persist this round's outcomes so future reviews of th
 - One entry per **canonical** finding (skip `plusone` "+1" replies). Map: `mr`, `file`, `line`, `category`, `severity`, `title` directly; `reviewer` = the finding's reviewer letter; `round` = this review round.
 - `dev_resolution`: `open` on round 1; on re-reviews, take it from that MR's `discussion` resolutions in `meta.json` (`resolved | deferred | disputed | clarified`) matched to the finding; `rationale` = the developer's quote / your response.
 - Top level: `stack` (detected, e.g. `flutter-bloc`), `commit` (each MR's head SHA — or set per-entry if they differ), `date` (today).
+- **Also emit one `reviews` roll-up per reviewed MR** — otherwise the verdict you just
+  computed is thrown away and `/review-pr-stats` can never report approved vs
+  request-changes:
+  ```json
+  "reviews": [{"mr": 57, "round": 2, "verdict": "🔄 Request Changes", "head_sha": "b99e92c8",
+               "p0": 1, "p1": 3, "p2": 7, "build": "failed", "conflicts": false}]
+  ```
+  Counts are the canonical findings only (exclude `+1` replies). Stored as
+  `kind:"review"`, excluded from recall — stats, never findings.
 - **Omit `signature`** — it auto-derives from file+title+category and links the same finding across rounds.
 
 ```bash
