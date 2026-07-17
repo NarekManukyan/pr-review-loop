@@ -21,11 +21,20 @@ Changed
   `agents/review-panel.md` (A/B/C/E: `Read, Grep, Glob, Bash`) and `agents/review-build.md`
   (D: `Bash, Read`, `model: haiku`), installed to `~/.claude/agents/`. They were
   `general-purpose`, which re-sends **~100 unused MCP tool schemas on every turn**.
-  Measured: an identical trivial 11-turn agent cost **71,479 tokens as general-purpose vs
-  11,857 with 4 tools — an 83% cut**, ~5,420 tok/turn of schemas for tools a code reviewer
-  never calls. Across a 5-agent panel at ~20 turns that is **~540k tokens/round of pure
-  overhead, removed at zero quality cost.** This is the single largest saving in the
-  pipeline and it dwarfs every content-side lever by ~15x.
+  Measured two ways. **Probe** (identical trivial 11-turn agent): **71,479 tok as
+  general-purpose vs 12,379 as `review-panel` — 82.7%**, i.e. ~5,420 tok/turn is schemas.
+  A 4-tool agent with a *longer* system prompt cost only +522 over a terse one, which rules
+  out prompt length as the cause. **Real review** (explorer-back!71, same contract, same
+  25 tool_uses, only the agent type differing): **154,347 → 102,782 tok, a 33% cut on one
+  reviewer** — ~258k/round across the panel. It is 33% rather than 83% because a real review
+  also carries ~70k of unavoidable content (cached, paid once); the *overhead* portion drops
+  83%, the content portion does not move.
+  **Quality held or improved**: 11 → 10 findings, but the cheap panel *recovered* two
+  findings the expensive one missed (`onboarding_kyc.go:51` check-then-act,
+  `repository.go:335` sibling mappers), *upgraded* the `Update()` TOCTOU to P0, and found
+  two nobody else did — including a P1 **fail-open**: with the gate off,
+  `mapUpdateExplorer:636-641` self-activates an `admin_rejected` guide and nulls the
+  reason, a branch no test covers.
 - **Generated files are skipped from the diff AND from reads, per the loaded pack** — the
   skip list was Flutter-shaped, so a Go repo's generated output sailed through. The Go
   pack said `*.sql.go`, but sqlc also emits `models.go`/`db.go`/`querier.go`, and
