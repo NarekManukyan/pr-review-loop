@@ -104,6 +104,16 @@ skip any single file whose diff exceeds ~15k tokens, cap total material ~60k tok
      **4d. Only after every prior thread AND orphan comment is handled** proceed to
      review the new diff.
 
+   **4e. Read the task (ticket + acceptance criteria).** Extract the ticket key from the
+   PR title or source branch (`/\b[A-Z]{2,}-\d+\b/`, e.g. `[COM-810]`, `MONE-909`). If
+   present, route to the right Jira and fetch the issue per
+   `review-core/references/spec-ac.md` + `config/jira-routing.json` (by GitLab/GitHub
+   group; matches on Jira **site host**, so multiple Jira accounts coexist and the correct
+   one is picked per repo). Pull the acceptance criteria (Jira ACs, else an AC/"Done when"
+   section in the PR description). This is what Reviewer F needs; no key and no
+   description ACs → skip F. Reading existing PR *comments* is already covered by step 4 —
+   4e is only the **task/spec** side.
+
    **How to resolve threads (required):**
    ```bash
    gh api -X POST repos/OWNER/REPO/pulls/N/comments/<comment_databaseId>/replies -f body="✅ Resolved"
@@ -111,10 +121,12 @@ skip any single file whose diff exceeds ~15k tokens, cap total material ~60k tok
    # GitLab: glab api -X PUT ".../discussions/<id>?resolved=true"
    ```
 
-5. **Run the panel.** Spawn Reviewers A/B/C **and E** with
-   `subagent_type: 'review-panel'`, and **D** with `subagent_type: 'review-build'`
-   (Build & CI parity — haiku, small context: branch + CI config + file list, no diff
-   body). **Never spawn a reviewer as `general-purpose`** — it re-sends ~100 unused MCP
+5. **Run the panel.** Spawn Reviewers A/B/C **and E** (and **F** when 4e found a ticket
+   key or PR-description ACs — pass it the ACs) with `subagent_type: 'review-panel'`, and
+   **D** with `subagent_type: 'review-build'` (Build & CI parity — haiku, small context:
+   branch + CI config + file list, no diff body). F returns per-AC
+   **done / partial / not-done** with a `file:line`; a `partial`/`not-done` AC is a P1
+   (ticket not delivered) and posts as a normal inline/overview finding. **Never spawn a reviewer as `general-purpose`** — it re-sends ~100 unused MCP
    tool schemas every turn (~5,420 tok/turn measured, ~83% of a reviewer's per-turn
    cost). The plugin's agents carry only `Read, Grep, Glob, Bash`, which is all a
    reviewer uses. Into every persona prompt inject, in precedence order: the universal

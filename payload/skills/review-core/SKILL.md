@@ -21,7 +21,6 @@ Both call this engine so review quality is identical and defined once.
 | `references/universal-lenses.md` | U1–U14: stack-agnostic review principles (the WHAT). Always applied. |
 | `references/personas.md` | Reviewers A/B/C + **D (Build & CI parity, runs on haiku)** + **E (Seams & Blast Radius: U5/U13/U14 + parallel-structure sweep)** + **F (Spec & AC completeness)**, and the "Reading the code" contract (diff in, reads on demand). |
 | `references/spec-ac.md` | Reviewer F procedure: repo→Jira routing, AC extraction, per-AC verdicts, MR-description fallback. |
-| `references/prior-comments.md` | Ingest existing MR/PR notes (human + CodeRabbit), verify each at HEAD, and reconcile coverage so nothing already written on the thread is silently missed. |
 | `config/jira-routing.json` | Repo (GitLab group) → Jira site map used by the AC pass. Matches on site host, not hashed server IDs, so multiple Jira accounts coexist. |
 | `references/lenses/<stack>.md` | Per-stack idioms (the HOW). Loaded on demand by the resolver. |
 | `references/lenses/README.md` | Pack contract — how to author/extend a stack pack. |

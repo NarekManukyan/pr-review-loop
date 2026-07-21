@@ -84,14 +84,9 @@ Write per-MR unified diffs (generated files excluded — see hard rule 3) to `mr
 and full sources to `mr<N>-files/<path>` in a scratchpad working dir. Note stacked MRs
 (target branch = another MR's source) and already-merged state — report both.
 
-**Also fetch the MR's existing discussion notes** — we never post to GitLab/GitHub, so
-every note is external signal (human reviewers, CodeRabbit, the author) we otherwise miss.
-Follow `review-core/references/prior-comments.md`: `glab api …/merge_requests/<N>/notes` (+
-`…/discussions` for `position.new_path/new_line`), drop `system:true`, collapse bot
-boilerplate, write `prior-comments.md` and pass it to Reviewers **E** and **F**. On a real
-case (`explorer-back!79/!82/!83`) a human's `## AC status — not done` naming a sibling
-table / struct sat in the thread while our panel reviewed only the diff — this is the fetch
-that stops that recurring.
+> This flow does **not** mine the GitLab/GitHub MR discussion thread — its review context
+> comes from the Slack thread (§1's `thread-context.md`) + Jira ACs (Reviewer F). Reading
+> the platform's own review comments is the inline `/review-pr` command's job.
 
 **Reviewers must read what their lenses require.** The reads that matter are mandatory,
 not optional (`review-core/references/personas.md` § "Reading the code"): the whole file
@@ -216,16 +211,6 @@ Combine the three result sets. When 2–3 reviewers hit the same issue:
 - Keep the strongest write-up as the **canonical** finding (highest severity wins; else most detailed).
 - Convert the others to short **"+1" replies**: `{...same file/line/severity, title: "+1 — agree", body: "<unique additional facts only>", snippet: "", plusone: true}` — threaded under the canonical in the report. `plusone` entries are excluded from severity counts.
 - Align line numbers of duplicates so they thread together.
-
-**Prior-comment coverage (anti-miss).** Before writing findings, reconcile `prior-comments.md`
-against the panel's results per `review-core/references/prior-comments.md` §4: map **every**
-external note to `also-found | confirmed | refuted (cite code) | human-call`. Any note mapping
-to none is a hole — verify it at HEAD and either add the finding or record why not. `confirmed`
-/`also-found` items become normal findings and count toward the verdict. Put a compact
-**"Prior comments reconciled — N (h human · b bot)"** block in each MR's overview (list the
-non-trivial ones with their disposition), and add one line to the Slack verdict when any
-external comment was confirmed/also-found. The invariant: nothing already written on the MR
-leaves un-addressed.
 
 Write `findings.json` (all entries, sequential `id` field, summaries included) and `meta.json`:
 

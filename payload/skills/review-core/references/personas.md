@@ -187,15 +187,6 @@ the ticket is not delivered). Exists because a human, not the panel, caught
 their ACs** (a sibling table, a sibling struct, an unmet criterion). Skip F silently when
 the MR carries no ticket key and no MR-description ACs.
 
-**F also owns the prior-comment coverage check** (`references/prior-comments.md`): the
-MR/PR thread we never post to already holds human + bot (CodeRabbit) notes — on those same
-three MRs a human's `## AC status — not done` was sitting in the thread the whole time.
-F ingests those notes, and after the panel runs, reconciles **every** external comment to
-`also-found / confirmed / refuted (cite) / human-call` — anything mapping to none is a hole
-to close before delivery. Comments are **leads to verify at HEAD**, never facts to echo
-(FACT vs ASSUMPTION applies to their claims too). E consumes the same file for its seam and
-parallel-structure leads.
-
 ---
 
 > Both front-ends run the full panel by referencing this file, so inline `/review-pr`
