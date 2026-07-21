@@ -287,7 +287,8 @@ Compose one short message (template in `references/reviewer-prompts.md` § Verdi
 
 - `TARGET`: DM the author → their user ID or `@Display Name` (msg.sh resolves names); thread-reply case → the channel ID.
 - `thread_ts`: for the Slack-URL case, the parent thread ts (so the verdict is a reply); for a fresh DM, omit.
-- Capture the `ts=<...>` that `msg.sh` prints — that's the parent for the report upload.
+- Capture the ts that `msg.sh` prints from its **`MSG_TS=` line**, never with a naive `grep ts=` — the permalink line also contains `thread_ts=<digits>`, so `grep -o 'ts=[0-9.]*'` matches **both** and yields a garbled two-line value; passed to `send.sh` it silently drops the upload to the **channel root** (`thread_ts=None`) instead of the thread. Use: `TS=$(msg.sh … | sed -n 's/^MSG_TS=//p')`.
+- **For the report upload (6b), pass the thread PARENT ts** — the anchor PR message (watch/Slack-URL case) or `MSG_TS` for a fresh DM. Do **not** pass a verdict-reply ts that is itself already a threaded reply: `files.completeUploadExternal` only threads under a real parent and drops non-parent ts to the channel root.
 - **No CC token?** `msg.sh` exits `3`. Do **not** silently send via MCP. Stop and tell the user to run `~/.claude/skills/slack-send/install.sh` once (connects the CC App → posts as them and unlocks the report upload), then retry. Only if the user explicitly declines the install, fall back to the MCP connector for the verdict message alone (posts under the connector identity, **no file upload possible**) — and make that limitation explicit to the user.
 
 **Step 6b — upload the HTML report into that thread:**
@@ -297,7 +298,7 @@ Compose one short message (template in `references/reviewer-prompts.md` § Verdi
   "<Desktop path to mr-review-<Ns>.html>" \
   "<TARGET (channel ID for thread; user ID for DM)>" \
   "📄 Full review report" \
-  "<ts from 6a>"
+  "<thread PARENT ts — anchor PR message (watch/Slack-URL), or MSG_TS for a fresh DM; NOT a verdict-reply ts>"
 ```
 
 - On `NO_TOKEN`/token error: the MCP connector **cannot upload files**, so there is no auto-fallback — tell the user to either run `~/.claude/skills/slack-send/install.sh` (connect the CC App) and retry, or drag `mr-review.html` into the thread manually. Surface the error.

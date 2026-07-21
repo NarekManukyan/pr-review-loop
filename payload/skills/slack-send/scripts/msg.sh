@@ -96,3 +96,7 @@ POSTED_CH=$(echo "$R" | jget channel)
 LINK=$(api chat.getPermalink --data-urlencode "channel=$POSTED_CH" --data-urlencode "message_ts=$TS" | jget permalink)
 echo "OK message -> $TARGET ($POSTED_CH) ts=$TS"
 [ -n "$LINK" ] && echo "$LINK"
+# Machine-readable, collision-proof handles (parse these, not the human line above —
+# the permalink contains `thread_ts=` which a naive `grep ts=` wrongly matches too).
+echo "MSG_TS=$TS"
+echo "MSG_CHANNEL=$POSTED_CH"
