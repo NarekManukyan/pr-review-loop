@@ -82,4 +82,43 @@ detect_stack() {
 detect_stack
 
 echo
+echo "jira (only needed for the Spec/AC reviewer — Reviewer F):"
+JR="$HOME/.claude/skills/review-core/config/jira-routing.json"
+if [ -f "$JR" ] && have python3; then
+  python3 - "$JR" "$HOME/.claude.json" <<'PY'
+import json,sys
+jr=json.load(open(sys.argv[1]))
+routes=jr.get("routes",[]) + ([{"gitlab_group":"* (default)","jira_site":jr.get("default",{}).get("jira_site")}] if jr.get("default") else [])
+# registered atlassian MCP servers
+sites_regd=0
+try:
+    cj=json.load(open(sys.argv[2]))
+    def walk(o):
+        n=0
+        if isinstance(o,dict):
+            for k,v in o.items():
+                if k=="mcpServers" and isinstance(v,dict):
+                    for nm,cfg in v.items():
+                        if "mcp.atlassian.com" in json.dumps(cfg): n+=1
+                else: n+=walk(v)
+        elif isinstance(o,list):
+            for x in o: n+=walk(x)
+        return n
+    sites_regd=walk(cj)
+except Exception: pass
+P="  \033[32mPASS\033[0m  "; W="  \033[33mWARN\033[0m  "
+for r in routes:
+    site=r.get("jira_site") or "(unset)"
+    grp=r.get("gitlab_group","?")
+    if not site or site.startswith("FILL-ME"):
+        print(f"{W}route {grp} -> jira_site not set (edit {sys.argv[1]}) — AC pass falls back to MR-description ACs")
+    else:
+        print(f"{P}route {grp} -> {site}")
+print(f"{P if sites_regd else W}{sites_regd} Atlassian MCP server(s) registered — live reachability (which account reaches which site) is checked by /review-pr-doctor")
+PY
+else
+  warn "jira-routing.json or python3 missing — AC pass uses MR-description ACs only. Config: $JR"
+fi
+
+echo
 echo "Legend: PASS = ready · WARN = optional/only needed for some features · FAIL = fix before use."
