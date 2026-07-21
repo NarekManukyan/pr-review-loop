@@ -5,7 +5,7 @@
       "gitlab_group": "dz44-group",
       "jira_site": "minitok.atlassian.net",
       "cloud_id": "fb42695b-a877-4592-8739-b9d215834221",
-      "note": "dz44-group products (COM + MONE + minitok) share the minitok.atlassian.net site. The AC pass uses whichever connected Atlassian MCP can reach this host. If the existing connection returns 'isn't explicitly granted', re-run its OAuth and grant this site (or add a second Atlassian MCP authed to the account that owns it). cloud_id is a cached hint so the engine can skip resolution."
+      "note": "dz44-group products (COM + MONE + minitok) live on minitok.atlassian.net, owned by a SEPARATE account: narek.manukyan@minitok.com. The already-connected Atlassian MCP is narek.manukyan@moneteam.com (projest.atlassian.net only) and CANNOT reach this site — different login, not a missing grant. Connect a second Atlassian MCP authed as narek.manukyan@minitok.com; the AC pass then auto-selects whichever connected server reaches this host. cloud_id is a cached hint so the engine can skip resolution."
     }
   ],
   "default": {
