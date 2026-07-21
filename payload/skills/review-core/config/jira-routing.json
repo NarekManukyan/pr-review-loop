@@ -3,8 +3,9 @@
   "routes": [
     {
       "gitlab_group": "dz44-group",
-      "jira_site": "FILL-ME.atlassian.net",
-      "note": "dz44-group products (COM + MONE + minitok, one shared site). Connect a SECOND Atlassian MCP authed to the account that can see these projects, then replace jira_site with that site's host (e.g. moneteam.atlassian.net). Until then the AC pass degrades to ac_source_fallback for this group."
+      "jira_site": "minitok.atlassian.net",
+      "cloud_id": "fb42695b-a877-4592-8739-b9d215834221",
+      "note": "dz44-group products (COM + MONE + minitok) share the minitok.atlassian.net site. The AC pass uses whichever connected Atlassian MCP can reach this host. If the existing connection returns 'isn't explicitly granted', re-run its OAuth and grant this site (or add a second Atlassian MCP authed to the account that owns it). cloud_id is a cached hint so the engine can skip resolution."
     }
   ],
   "default": {
