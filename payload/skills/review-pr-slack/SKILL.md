@@ -138,11 +138,12 @@ rules: CLAUDE.md, analysis_options.yaml, .review-memory`. Unknown stack →
 **universal-only** (still a full review). This supplies the stack-appropriate idioms —
 Go/Postgres, NestJS, Flutter-BLoC/MobX, … — instead of a hardcoded Flutter checklist.
 
-### 2. Run the 5-agent panel
+### 2. Run the panel (5 agents, +1 when the MR has a ticket)
 
-Spawn five agents **in parallel** (Agent tool, `run_in_background: true`).
+Spawn the agents **in parallel** (Agent tool, `run_in_background: true`): A/B/C/E/D
+always, **and Reviewer F when the MR carries a ticket key or MR-description ACs**.
 
-**Spawn A/B/C/E with `subagent_type: 'review-panel'` and D with
+**Spawn A/B/C/E/F with `subagent_type: 'review-panel'` and D with
 `subagent_type: 'review-build'`** — the plugin's own agent definitions, which carry a
 **minimal toolset** (`Read, Grep, Glob, Bash`). Do **not** use `general-purpose`: it
 re-sends ~100 unused MCP tool schemas on **every turn** — measured at **~5,420 tok/turn**,
@@ -168,9 +169,19 @@ plus the stack `lenses/*.md` the resolver loaded:
   config and the MR's file list; it does not need the diff body or any source.
 - **E — Seams & Blast Radius** — the reviewer for code *outside* the diff: is the new
   thing wired (U5), drained like its siblings (U14), consistent with its neighbors
-  (U13), and does the far-side consumer have a dedup key (U3)? Reads the composition
-  root / sibling / consumer on demand. Exists because three of four misses on
-  `booking-back!31` lived in exactly those seams.
+  (U13), and does the far-side consumer have a dedup key (U3)? Plus the **parallel-
+  structure sweep**: a fix that adds a table entry / struct field / switch case whose
+  **sibling of the same shape didn't get the same change** (real miss: !83's
+  `tourTemplateErrorMappings`, !82's `TourExplorer.RatingCount`). Reads the composition
+  root / sibling / consumer on demand.
+- **F — Spec & AC Completeness** *(only when a ticket key or MR-description ACs exist)* —
+  routes to the repo's Jira per `review-core/references/spec-ac.md` +
+  `config/jira-routing.json` (by GitLab group; matches on site host so multiple Jira
+  accounts coexist), fetches the ticket's acceptance criteria, and returns
+  **done / partial / not-done** per AC with a `file:line`. A `partial`/`not-done` AC is a
+  **P1** (ticket not delivered). Falls back to MR-description ACs when the routed Jira
+  isn't connected; skipped silently when there's no ticket. Catches the
+  `explorer-back!79/!82/!83` class where the fix was correct but incomplete vs its ACs.
 
 **Per-agent scoping (keep the panel inside budget).** Pass each agent only what it owns:
 its own persona section + the universal lenses it owns + the loaded pack(s). A/B/C get

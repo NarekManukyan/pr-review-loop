@@ -1,0 +1,16 @@
+{
+  "$comment": "Repo -> Jira routing for the review AC pass (see references/spec-ac.md). Keyed by GitLab GROUP = the first path segment after gitlab.com/ in the MR URL. The engine derives the group, looks up the target Jira SITE here, then picks whichever CONNECTED Atlassian MCP server can actually reach that site (via getAccessibleAtlassianResources). Server IDs are intentionally NOT hardcoded — they are hashed per connection, so matching on the site host survives reconnects/renames and lets several Jira accounts coexist in one session. The ticket key comes from the MR title/branch (e.g. [COM-810], MONE-909) and self-identifies its project, so no per-repo project-key table is needed.",
+  "routes": [
+    {
+      "gitlab_group": "dz44-group",
+      "jira_site": "FILL-ME.atlassian.net",
+      "note": "dz44-group products (COM + MONE + minitok, one shared site). Connect a SECOND Atlassian MCP authed to the account that can see these projects, then replace jira_site with that site's host (e.g. moneteam.atlassian.net). Until then the AC pass degrades to ac_source_fallback for this group."
+    }
+  ],
+  "default": {
+    "jira_site": "projest.atlassian.net",
+    "note": "Repos not matched by any route use this site — currently the already-connected account (HIL / KRIS / LHZJ)."
+  },
+  "ac_source_fallback": "mr_description",
+  "on_no_jira": "degrade"
+}

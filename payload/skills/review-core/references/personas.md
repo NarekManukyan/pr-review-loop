@@ -153,10 +153,39 @@ subscribers, providers, routes, events, widgets) and for each:
    service/team consumes to move money, the event ID must be deterministic
    (`<event_type>:<aggregate_id>`), never `uuid.New()` per emit. Exactly-once inside our
    own transaction says nothing about the far side of the outbox.
+5. **Parallel-structure sweep (U13, completeness).** When the diff *adds an entry to a
+   table / a field to a struct / a case to a switch / a mapping to a registry*, the
+   frequent bug is that a **sibling of the same shape needs the same addition and didn't
+   get it**. For each such change, grep the file **and** package for siblings of that
+   shape and check each got the parallel treatment — cite the sibling's `file:line`:
+   - added mappings to `tourErrorMappings` → are there other `*ErrorMappings` /
+     `*Handlers` / `*Routes` tables that resolve the same inputs? (real miss:
+     `tourTemplateErrorMappings` in the **same file**, 6 lines away, got none of the 4
+     sentinels → template create still 500s.)
+   - added a field to a response struct → what **other** response/DTO structs expose the
+     same concept and now look inconsistent? (real miss: `RatingCount` added to
+     `domain.Explorer` but `domain.TourExplorer` — the guide summary on `GET /tours` —
+     still has `RatingAvg` and no `RatingCount`, same user-visible bug, different
+     endpoint.)
+   A sibling that should have changed and didn't is **P1 if it breaks an AC, else P2**;
+   cross-reference to Reviewer F's AC verdict when one applies.
 
 E reads on demand and reads **deliberately**: the composition root, the sibling, the
 consumer. It does not need the bulk of the diff's changed files — it needs the small set
 of unchanged files the diff just put at risk.
+
+## Reviewer F — Spec & AC Completeness
+Senior `<stack>` engineer wearing the **product** hat. **The diff is internally correct —
+but does the shipped behavior satisfy every acceptance criterion the ticket asked for?**
+F is the only reviewer fed the originating issue's ACs; it judges *delivery*, not code
+style. Full procedure — repo→Jira routing, AC extraction, per-AC verdicts, MR-description
+fallback — is in `references/spec-ac.md`. In short: route to the correct Jira for the
+repo's GitLab group, fetch the ticket's ACs, and for each AC return
+**done / partial / not-done** with a `file:line` (a `partial` or `not-done` AC is a P1 —
+the ticket is not delivered). Exists because a human, not the panel, caught
+`explorer-back!79/!82/!83` shipping fixes that were correct but **incomplete against
+their ACs** (a sibling table, a sibling struct, an unmet criterion). Skip F silently when
+the MR carries no ticket key and no MR-description ACs.
 
 ---
 
