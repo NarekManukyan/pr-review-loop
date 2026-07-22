@@ -41,6 +41,23 @@ cached and paid once; the cost is tool schemas, which is why you run on a minima
 | Any **reachability / lifecycle finding** (U5/U14, E) | the **composition root's startup AND shutdown paths, in full**. |
 | Any **cross-service event** (U3, E) | the consumer's dedup key, if reachable in this repo. |
 | A hunk whose meaning depends on code you cannot see | that code. Never guess — cite or stay silent. |
+| **Stacked MR** (this MR's target branch is another open MR's source) — any finding of the form *"X is not wired / not registered / has no caller / is never published / does not exist"* (U5/U9) | the relevant code **at the stack tip**, before reporting. The tip ref is passed to you by the front-end. If the tip wires it up, **drop the finding** or downgrade it to a note. Your merge-base is not the whole stack. |
+
+**In stack mode you are already at the tip** (`stack-mode.md`): the front-end gives you the
+**cumulative diff** `merge-base(main, tip)…tip` as one unit, so every file you read is at
+its **final** state and the composition root is the real one. Line numbers are
+tip-relative; the front-end maps each finding back to the MR that introduced it. This is
+where the per-MR mode failed — an intermediate state that never reaches `main` produced 18
+findings a later MR in the same chain had already fixed. **Reviewer E gains the most**: at
+the tip, U5/U13/U14 judge what actually ships.
+
+**Method warning for the stack-tip check — read, never grep for a guess.** Verify by
+opening and reading the relevant code at the tip. Two wrong verdicts came from grepping
+`updateLocalDeliveryConfig` when the real symbol was `_saveLocalDeliveryConfigUseCase` —
+a symbol name you assumed is not evidence. And **a grep of a single file cannot see its
+`part` files**: that produced a recommendation to delete a load-bearing import, which
+would have broken the build. Follow the `part`/`part of` (and equivalent include/split)
+declarations before concluding anything is unused.
 
 Line numbers still reference the NEW file version: take them from the hunk's `@@`
 header, or from the file you read. **Never estimate a line number.** If you cannot cite
@@ -92,22 +109,46 @@ MR's file list. It does **not** need the diff body or any source.
 Per MR:
 1. `cd <repo> && git fetch origin <source-branch>`;
    `git worktree add <scratch>/build-mr<N> origin/<source-branch>`.
-2. **Mirror the repo's CI, do not invent a generic build.** Read
+2. **Resolve the toolchain first — before any gate runs — and use absolute paths.**
+   Never invoke a bare `flutter`/`dart`/`node`/`go`: a shell alias or shim can shadow it
+   and fail silently (a `flutter` alias pointing at a per-project SDK that does not exist
+   yet made `pub get` a no-op and `dart analyze` emit thousands of phantom errors). Read
+   what the repo pins and run *that*: Flutter → `.fvmrc` (and `.fvm/fvm_config.json`); if
+   a version is pinned use `$HOME/fvm/versions/<version>/bin/flutter` and `.../bin/dart`.
+   Verify with `<sdk>/bin/flutter --version` and check it matches the pin **and** the
+   `environment: sdk:` constraint in `pubspec.yaml`. Same principle for every other stack
+   (`.nvmrc`, `.tool-versions`, `.go-version`, `.ruby-version`, `asdf`, `mise`): resolve
+   the version the repo pins, not whatever is on PATH. Record the resolved SDK path +
+   version in the build record (`"sdk"`).
+3. **Mirror the repo's CI, do not invent a generic build.** Read
    `.gitlab-ci.yml` / `.github/workflows/*` / `Makefile` / `CLAUDE.md` and run the
    pipeline's **exact** lint + test + build commands. Common gates that a generic build
    misses — always include when the repo uses them:
    - **Formatter/linter gate:** `gofmt -l .` (fail if non-empty) / `dart format --output=none --set-exit-if-changed .` / `eslint` / `golangci-lint run` / `dart analyze`. These are the merge-blockers CI enforces.
    - **Build tags:** if tests use `//go:build <tag>`, run `go vet -tags=<tag> ./...` and `go test -tags=<tag> -run=^$ ./...` (compile-only) — `go build ./...` skips `_test.go` and tagged files, so a test-only MR can be broken while a generic build is green.
    - **Real dependency resolution:** run the install the way CI does (`go mod verify`, `npm ci`, `flutter pub get` on the **pinned** deps). A committed local `path:`/`file:` dependency breaks everyone else's install even though it resolves on the author's machine — flag it.
+   - **Scope the analyzer to the package.** In multi-package repos (a package plus an `example/` app), analyze the package dir (`dart analyze lib`) or run the install in each package first. Analyzing the root without installing sub-package deps yields thousands of false errors.
+   - **Sanity-gate the analyzer run.** If the output contains unresolved core-framework imports (`package:flutter/...` for Flutter, a missing stdlib elsewhere), the dependency install did not work. **Discard the run** — do not report those errors. Fix the invocation and re-run. A run is valid only once the framework resolves.
    - Stack specifics live in each lens pack's "CI gates" section.
-3. **Pipeline status:** if the platform exposes the head pipeline
+4. **"Could not verify" is never "passes."** If the install or the analyzer cannot be
+   made to run, report `"compiles": null` **and emit a P1 finding** that the build is
+   unverified (state what failed and the exact command). An unverified build blocks
+   Approve exactly as a broken one does — the front-ends' verdict logic treats it as a
+   blocker.
+5. **Pipeline status:** if the platform exposes the head pipeline
    (`glab ci status` / `gh pr checks`), a RED required job is a P1 merge-blocker even
    if the local run is green — report it with the failing job name.
-4. **Clean up before removing the worktree** (match the stack: `flutter clean` /
+6. **Clean up before removing the worktree** (match the stack: `flutter clean` /
    `dart clean` / `go clean` (not `-cache`) / `./gradlew clean`; Node needs nothing —
    `node_modules` is inside the worktree), then
    `git worktree remove --force <scratch>/build-mr<N>` + `git worktree prune`
    (fallback `rm -rf` + prune).
+
+**Stacked chains (`stack-mode.md`).** The front-end passes the chain + merge policy.
+**atomic** → build **once at the stack tip**; the intermediate branches never reach `main`
+alone, so a per-MR run burns a toolchain per MR to report failures nobody hits.
+**piecemeal** → build **once per MR**, answering only *"does this MR alone leave `main`
+compiling?"* — a failure there is a P1 on that MR even when the tip is green.
 
 **Bound your output (this is context, not a log).** Quote **only** the error lines you
 actually cite in a finding — never paste a whole analyzer/build run. Warnings and infos
@@ -118,8 +159,9 @@ tool output + `file:line`, category "Build & Analyze"). Skip already-merged MRs
 (record `{"compiles":null,"notes":"skipped — already merged"}`).
 
 Return one build record per MR:
-`{"mr":N,"reviewer":"D","build":{"compiles":true,"analyzer_errors":0,"analyzer_warnings":0,"ci_gates":["gofmt","dart analyze","go vet -tags=e2e"],"pipeline":"passed|failed|n/a","tool":"…","notes":"…"}}`
-plus P0/P2 findings for any errors.
+`{"mr":N,"reviewer":"D","build":{"compiles":true,"analyzer_errors":0,"analyzer_warnings":0,"sdk":"<resolved absolute path + version>","ci_gates":["gofmt","dart analyze","go vet -tags=e2e"],"pipeline":"passed|failed|n/a","tool":"…","notes":"…"}}`
+plus P0/P2 findings for any errors, and the P1 unverified-build finding when
+`"compiles"` is `null` for any reason other than "already merged".
 
 ## Reviewer E — Seams & Blast Radius
 Senior `<stack>` engineer. **The diff changed something — what unchanged code did it
@@ -186,6 +228,12 @@ the ticket is not delivered). Exists because a human, not the panel, caught
 `explorer-back!79/!82/!83` shipping fixes that were correct but **incomplete against
 their ACs** (a sibling table, a sibling struct, an unmet criterion). Skip F silently when
 the MR carries no ticket key and no MR-description ACs.
+
+**In stack mode** (`stack-mode.md`): collect the ticket for **every MR in the chain**,
+verify all of their ACs against the **final state at the tip**, and when the tickets share
+a parent epic check the epic's ACs too. An AC satisfied anywhere in the chain is `done` —
+judging AC coverage from one intermediate MR is exactly how a delivered criterion gets
+reported as missing.
 
 ---
 

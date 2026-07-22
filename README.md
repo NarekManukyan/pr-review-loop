@@ -126,6 +126,19 @@ trigger ─▶ recall memory ─▶ 5-agent panel ─▶ report ─▶ deliver �
    and libraries (Flutter BLoC/MobX/Riverpod/Provider, Go/Postgres, NestJS, …) and loads
    the matching **lens pack(s)** on top of stack-agnostic **universal lenses**. Unknown
    stack → universal-only fallback. See [Stack detection & lens packs](#stack-detection--lens-packs).
+2b. **Detect stacked chains** — when an MR's target branch is another open MR's source
+   branch, they form a chain. The panel prints the map
+   (`Stack detected: !41 → … → !53 (10 MRs, tip = …)`) and **asks how the chain merges**:
+   **atomic** (lands together) or **piecemeal** (each MR reaches `main` on its own). It
+   never guesses — that answer is what makes stack-level review correct. Either way the
+   panel then reviews the **cumulative diff at the tip as one unit** rather than
+   intermediate states that never reach `main`; piecemeal adds a per-MR build gate
+   answering only *"does this MR alone leave `main` compiling?"*. Findings are attributed
+   back to the MR that introduced them (`git blame` at the tip → the lowest chain branch
+   containing that commit) so every author still gets their own comments, and the stack
+   gets **one verdict**. Reviewing a 10-deep chain MR-by-MR produced 18 findings a later
+   MR in the same chain had already fixed. MRs targeting `main` with no children are
+   independent and keep the per-MR path.
 3. **5-agent panel** — five reviewers run in parallel, each applying the universal
    lenses + the loaded stack pack. They run on a **minimal toolset** (`Read/Grep/Glob/Bash`)
    — measured 33% cheaper than general-purpose agents, at no quality cost:

@@ -20,6 +20,7 @@ Both call this engine so review quality is identical and defined once.
 | `references/resolver.md` | Detect stack + libraries → choose which lens pack(s) to load. Run FIRST. |
 | `references/universal-lenses.md` | U1–U14: stack-agnostic review principles (the WHAT). Always applied. |
 | `references/personas.md` | Reviewers A/B/C + **D (Build & CI parity, runs on haiku)** + **E (Seams & Blast Radius: U5/U13/U14 + parallel-structure sweep)** + **F (Spec & AC completeness)**, and the "Reading the code" contract (diff in, reads on demand). |
+| `references/stack-mode.md` | **Stacked chains**: detect the chain, ask the merge policy (atomic vs piecemeal), review the cumulative diff at the tip as ONE unit, attribute findings back to the introducing MR, one verdict. Run after the resolver whenever >1 MR is in play. |
 | `references/spec-ac.md` | Reviewer F procedure: repo→Jira routing, AC extraction, per-AC verdicts, MR-description fallback. |
 | `config/jira-routing.json` | Repo (GitLab group) → Jira site map used by the AC pass. Matches on site host, not hashed server IDs, so multiple Jira accounts coexist. |
 | `references/lenses/<stack>.md` | Per-stack idioms (the HOW). Loaded on demand by the resolver. |
@@ -29,6 +30,10 @@ Both call this engine so review quality is identical and defined once.
 
 1. **Resolve** — follow `resolver.md` on the repo root: detect base stack + overlays,
    print the "Stack: … · packs: … · repo rules: …" line. Unknown stack → universal-only.
+1b. **Detect stacked chains** — with >1 MR in play, follow `stack-mode.md`: print the
+   chain map, **ask the merge policy** (atomic → review the cumulative diff at the tip as
+   one unit; piecemeal → the same plus a per-MR "does this alone leave `main` compiling?"
+   build gate). Independent MRs keep the per-MR path.
 2. **Assemble the panel** — spawn Reviewers A/B/C (and D on the build path, E for seams,
    and **F when the MR carries a ticket key or MR-description ACs** — route to the repo's
    Jira per `spec-ac.md`) from `personas.md`. Into every persona prompt inject, in

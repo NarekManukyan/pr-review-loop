@@ -3,6 +3,84 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.16.0
+
+Added
+- **Stack-level review — a stacked chain is reviewed as ONE unit, not MR-by-MR.** Both
+  front-ends now build the target→source graph across the open MRs: an MR whose **target
+  branch is another open MR's source branch** is part of a chain, and the **stack tip** is
+  the MR nobody targets. The panel prints the map
+  (`Stack detected: !41 → !42 → … → !53 (10 MRs, tip = MONE-975-…)`) and reviews the
+  **cumulative diff** `merge-base(main, tip)…tip` instead of intermediate states that never
+  reach `main`. That was the actual root cause of a bad round: a 10-deep chain reviewed
+  per-MR produced **18 findings a later MR in the same chain had already fixed**, plus one
+  recommendation that would have broken the build. It is also *less* work — on that chain,
+  **130 non-generated files vs 165 per-MR file-touches**, with every file read at its final
+  state. MRs targeting `main` with no children are **independent** and keep the per-MR path.
+  New engine reference: `review-core/references/stack-mode.md`.
+- **The merge policy is asked, never guessed** — this is what makes stack mode *correct*
+  rather than just cheaper. Before reviewing a detected chain the panel asks once:
+  **atomic** (the chain merges together) → full stack mode; **piecemeal** (each MR merges
+  to `main` separately) → stack-level review for correctness/architecture/AC **plus a
+  per-MR build gate** answering only *"does this MR alone leave `main` compiling?"*. If
+  MRs land one at a time, each intermediate state genuinely does reach `main` and per-MR
+  review of it is legitimate — so guessing here trades one wrong review for another.
+  Unattended `/loop` defaults to **piecemeal** (the strictly safer answer) and says so.
+- **Finding attribution — `scripts/attribute-findings.sh`.** Stack-mode findings carry
+  tip-relative `file:line`, but each still lands on the MR that introduced it so authors
+  get their own comments: `git blame` at the tip → commit SHA → the **lowest branch in
+  chain order** whose history contains it. **Verified on the real 10-MR chain** (112
+  commits): the `SelectionCard` probe in `…/widgets/fulfillment_methods.dart` resolves to
+  `MONE-749` (!41), and a 130-line sweep across the cumulative diff attributed to all 10
+  MRs with **no misattributions**. Two failure modes it exists to prevent, both of which
+  silently produce a wrong map: (1) `git branch --contains` **without `-a`** sees only
+  *local* branches, so a freshly fetched stack returns nothing and attribution looks
+  broken — the script uses `git for-each-ref --contains` over local **and** remote refs;
+  (2) every chain branch descends from the base, so a commit **already on `main`** is
+  contained by all of them and would attribute to the **bottom** MR — rejected via a
+  `--base` ancestor test. Unattributable rows come back as `UNKNOWN` with a reason and are
+  posted on the **tip** MR with the originating file named; a broken mapping is never
+  shipped and an author is never guessed.
+- **One verdict for the stack.** Computed from the cumulative review under the existing
+  policy and posted on the tip; every other MR in the chain gets a **short note pointing at
+  the stack overview**, never its own contradictory verdict (an MR whose own diff looks
+  clean is not Approve while its stack is blocked). In piecemeal mode an MR failing its own
+  build gate is additionally blocked on its own, and the overview says which of the two.
+- **Reviewer F spans the chain** — collects the ticket for **every** MR in it, verifies all
+  ACs against the **final state**, and checks the parent epic when the tickets share one.
+  An AC satisfied anywhere in the chain is `done`.
+- **Reviewer E gets more valuable, not less.** At the tip the composition root is the
+  **real** one, so U5/U13/U14 judge what actually ships — the intermediate-state versions
+  of those lenses were the bulk of the 18 false findings.
+
+Changed
+- **Reviewer D resolves the repo's pinned toolchain before any gate runs, using absolute
+  paths.** A bare `flutter`/`dart`/`node`/`go` can be shadowed by a shell alias or shim and
+  fail silently — a `flutter` alias pointing at a per-project SDK that did not exist yet
+  made `pub get` a no-op and `dart analyze` emit **thousands of phantom errors**. D now
+  reads what the repo pins (`.fvmrc`, `.nvmrc`, `.tool-versions`, `.go-version`, `asdf`,
+  `mise`), runs *that* by absolute path, verifies it against the pin **and** the manifest's
+  SDK constraint, and records the resolved path + version in the build record (`"sdk"`).
+- **Analyzer sanity gate.** If an analyzer run contains unresolved core-framework imports
+  (`package:flutter/…`, a missing stdlib), the dependency install did not work: **discard
+  the run**, fix the invocation, re-run. Those errors are never reported. Related: scope
+  the analyzer to the package in multi-package repos (`dart analyze lib`) instead of
+  analyzing a root whose sub-package deps were never installed.
+- **An unverified build blocks Approve exactly as a broken one does.** Reviewer D returning
+  `"compiles": null` on an open MR — toolchain unresolved, install failed, analyzer could
+  not run — now yields `🔄 Request Changes — build ⚠️ unverified (<what failed>)` plus a P1
+  finding, in both front-ends and in the ✅/🔧 Slack reaction. **"Couldn't verify" is never
+  "passes."** Already-merged MRs remain the one exception: `null` there just means skipped.
+- **U9's stacked-tip check is mandatory, not advisory.** Any *"not wired / not registered /
+  no caller / never published / does not exist"* finding MUST be verified at the stack tip
+  before it is reported — and **by reading the code there, never by grepping for a symbol
+  name you assumed**: two wrong verdicts came from grepping `updateLocalDeliveryConfig`
+  when the real symbol was `_saveLocalDeliveryConfigUseCase`. A grep of a single file also
+  **cannot see its `part` files** — that produced a recommendation to delete a load-bearing
+  import, which would have broken the build. Follow `part`/`part of` (and equivalent
+  include/split) declarations before concluding anything is unused. In stack mode this is
+  automatic: the panel is already at the tip.
+
 ## 1.12.2
 
 Changed

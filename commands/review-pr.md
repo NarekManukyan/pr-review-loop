@@ -7,8 +7,8 @@ You are orchestrating a code-review panel. The **review brain lives in the share
 `review-core` engine** — do not restate personas or stack rules here; load them:
 
 > **Read the engine first:** `~/.claude/skills/review-core/SKILL.md` and its
-> `references/` (`resolver.md`, `universal-lenses.md`, `personas.md`, `lenses/`).
-> This command only handles **inline delivery** on GitHub/GitLab.
+> `references/` (`resolver.md`, `universal-lenses.md`, `personas.md`, `stack-mode.md`,
+> `lenses/`). This command only handles **inline delivery** on GitHub/GitLab.
 
 The panel is Reviewers **A (Architecture)**, **B (Correctness)**, **C (Perf/Quality)**,
 **D (Build & CI parity — spawn with `model: 'haiku'`, it is mechanical)**, and
@@ -58,6 +58,33 @@ skip any single file whose diff exceeds ~15k tokens, cap total material ~60k tok
    (Go/Postgres, NestJS, Flutter-BLoC/MobX, …).
 
 3. **Fetch and analyze the PR**: $ARGUMENTS
+
+   **Detect the stack and compute its tip.** Check whether this PR's **target branch is
+   another open PR's source branch** (a stacked chain). If it is, resolve the **stack
+   tip** — the source branch of the last PR in the chain (`origin/<source-branch>` of the
+   PR nobody targets) — and **pass that ref to every reviewer** in the common context
+   block, e.g. `Stack chain: !54 → !55 → !57 · stack tip: origin/feat/delivery-config`.
+   Each reviewer otherwise sees only its own merge-base: on a real 16-PR chain, four
+   foundation PRs were marked down for components the very next PR wires up. Per
+   `personas.md` § "Reading the code", any "not wired / not registered / no caller /
+   never published / does not exist" finding MUST be checked against the tip — by
+   **reading** the code there, never by grepping for an assumed symbol name — before it
+   is reported.
+
+   **A detected chain switches the whole review to stack mode — follow
+   `review-core/references/stack-mode.md`.** Emit the chain map
+   (`Stack detected: !41 → … → !53 (10 MRs, tip = …)`), then **ask the user the merge
+   policy once** (AskUserQuestion — **atomic** = whole chain merges together → full stack
+   mode; **piecemeal** = each MR merges to `main` separately → stack-level review *plus* a
+   per-MR build gate answering only "does this MR alone leave `main` compiling?"). **Never
+   guess the policy** — it is what makes stack-level review correct: if MRs land one at a
+   time, the intermediate states really do reach `main`. In stack mode the panel reviews
+   the **cumulative diff** `git merge-base <main> <tip>`…`<tip>` as ONE unit, findings are
+   attributed back to the introducing MR via `scripts/attribute-findings.sh`, and the
+   stack gets **one verdict** (each MR gets a short note pointing at it, not its own).
+   Reviewing MR-by-MR is what produced 18 findings a later MR in the same chain had
+   already fixed. A PR targeting `main` with no children is **independent** — unchanged
+   per-PR path below.
 
 4. **Detect the review round** from existing review comments:
    - No prior review comments → **Round 1**. Proceed.
@@ -157,7 +184,21 @@ skip any single file whose diff exceeds ~15k tokens, cap total material ~60k tok
    gaps) · **Skipped files** (anything the caps dropped — a known gap, name it) ·
    **Complex Logic Flagged** · **Verdict**
    (`✅ Approve` / `⚠️ Approve with minor fixes` / `🔄 Request Changes`). Merge conflict
-   OR broken build/CI OR any P0/P1 → Request Changes.
+   OR broken build/CI **OR an unverified build** OR any P0/P1 → Request Changes. An
+   **unverified** build — Reviewer D returning `"compiles": null` on an open PR because
+   the toolchain would not resolve, the install failed, or the analyzer could not run —
+   blocks Approve exactly as a broken one does (verdict `🔄 Request Changes — build ⚠️
+   unverified`, plus D's P1 finding). "Couldn't verify" is never "passes". Already-merged
+   PRs are the one exception: `null` there just means the check was skipped.
+
+   **In stack mode** (step 3) there is **one overview and one verdict for the whole
+   stack**, posted on the tip PR. Add a **Stack** section: the chain map, the merge policy
+   the user chose, and the per-MR finding counts from `attribute-findings.sh` (plus any
+   `UNKNOWN` rows, which post on the tip with their originating file named). Every other
+   PR in the chain gets only a short note pointing at that overview — never its own,
+   contradictory verdict. Findings still post inline on the PR the attribution resolved
+   to, so each author gets their own comments. In **piecemeal** mode, an MR that fails its
+   own build gate is additionally blocked on its own — say which of the two blocked it.
 
 8. **Generate a Fix Prompt** inside the overview (fenced) — a self-contained prompt the
    developer pastes into Claude Code. Every finding line: `file:line` + what's wrong +

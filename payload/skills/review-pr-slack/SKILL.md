@@ -34,8 +34,8 @@ When the trigger is a **channel message** (a Slack message URL, or watch mode �
 | Emoji | Meaning | When |
 |---|---|---|
 | 👀 `eyes` | review in progress | set at review start (before the panel runs) |
-| ✅ `white_check_mark` | approved | on deliver, if every MR verdict is Approve / Approve-with-minor-fixes and no P0/P1 remain |
-| 🔧 `wrench` | changes requested | on deliver, if any MR is Request Changes (or a build is broken / merge conflicts / any P0/P1 open) |
+| ✅ `white_check_mark` | approved | on deliver, if every MR verdict is Approve / Approve-with-minor-fixes, every build was actually verified, and no P0/P1 remain |
+| 🔧 `wrench` | changes requested | on deliver, if any MR is Request Changes (or a build is broken **or unverified** (`"compiles": null`) / merge conflicts / any P0/P1 open) |
 
 `react.sh state <channel> <anchor_ts> <emoji>` clears prior state emojis and sets one, so transitions are clean (👀 → ✅/🔧). Skip reactions for the pure-DM case (no channel anchor message).
 
@@ -83,6 +83,38 @@ glab api "projects/<path>/repository/files/<url-encoded-file>/raw?ref=<sha>"  # 
 Write per-MR unified diffs (generated files excluded — see hard rule 3) to `mr<N>.diff`
 and full sources to `mr<N>-files/<path>` in a scratchpad working dir. Note stacked MRs
 (target branch = another MR's source) and already-merged state — report both.
+
+**Detect the stack and compute its tip (required when >1 MR).** Build the target→source
+graph across the MRs under review: an MR whose **target branch is another MR's source
+branch** is part of a stacked chain. For each chain, resolve the **stack tip** — the
+source branch of the last MR in the chain (`origin/<source-branch>` of the MR nobody
+targets) — and **pass that ref to every reviewer** in the common context block, e.g.
+`Stack chain: !54 → !55 → !57 · stack tip: origin/feat/delivery-config (!57)`. Reviewers
+need it because each one otherwise sees only its own merge-base: on a real 16-MR chain,
+four foundation MRs were marked down for components the very next MR wires up. Per
+`personas.md` § "Reading the code", any "not wired / not registered / no caller / never
+published / does not exist" finding MUST be checked against the tip — by **reading** the
+code there, never by grepping for an assumed symbol name — before it is reported.
+
+**A detected chain switches the whole review to stack mode — follow
+`review-core/references/stack-mode.md`.** Emit the chain map
+(`Stack detected: !41 → !42 → … → !53 (10 MRs, tip = MONE-975-…)`), then **ask the user
+the merge policy once** (AskUserQuestion — **atomic** = the whole chain merges together →
+full stack mode; **piecemeal** = each MR merges to `main` separately → stack-level review
+*plus* a per-MR build gate answering only "does this MR alone leave `main` compiling?").
+**Never guess the policy**: if MRs land on `main` one at a time, each intermediate state
+really does reach `main` and per-MR review of it is legitimate. In loop mode (nobody to
+ask) default to **piecemeal** — the strictly safer answer — and say so in the verdict.
+
+In stack mode the panel reviews the **cumulative diff**
+(`git merge-base origin/<main> origin/<tip>`…`origin/<tip>`) as ONE unit into `stack.diff`
+instead of per-MR `mr<N>.diff`; every file is read at its final state, and on the real
+10-MR case that was **130 non-generated files vs 165 per-MR file-touches**. Build once at
+the tip (atomic) or once per MR (piecemeal). Reviewer F collects the ticket for **every**
+MR in the chain, verifies all of them against the final state, and checks the parent epic
+when the tickets share one. Findings are attributed back to the introducing MR (§3a) and
+the stack gets **one verdict**. MRs targeting `main` with no children are **independent**
+and keep the per-MR path.
 
 > This flow does **not** mine the GitLab/GitHub MR discussion thread — its review context
 > comes from the Slack thread (§1's `thread-context.md`) + Jira ACs (Reviewer F). Reading
@@ -212,6 +244,27 @@ Combine the three result sets. When 2–3 reviewers hit the same issue:
 - Convert the others to short **"+1" replies**: `{...same file/line/severity, title: "+1 — agree", body: "<unique additional facts only>", snippet: "", plusone: true}` — threaded under the canonical in the report. `plusone` entries are excluded from severity counts.
 - Align line numbers of duplicates so they thread together.
 
+### 3a. Attribute stack findings back to the introducing MR *(stack mode only)*
+
+Stack-mode findings carry **tip-relative `file:line`**, but each must land on the MR that
+introduced it so the right author gets their own comments. Blame the line at the tip →
+commit SHA → the **lowest branch in chain order** containing it. Batch it:
+
+```bash
+# findings.txt: one `path:line` per canonical finding
+scripts/attribute-findings.sh --repo <repo> --tip origin/<tip-branch> \
+  --chain <br1,br2,…,brN> --base origin/main < findings.txt   # TSV: file line branch sha
+```
+
+Map each branch back to its MR number and set that as the finding's `mr`. **Verified on
+the real 10-MR chain** — the `SelectionCard` probe resolves to `MONE-749` (!41), and a
+130-line sweep hit all 10 MRs with no misattributions. Rows returning `UNKNOWN`
+(`pre-existing` / `no-such-file` / `line-out-of-range` / `not-in-chain`) are normal —
+assign them to the **tip** MR and name the originating file. **Never guess an author.**
+If the script cannot run at all (shallow clone, branches not fetched), say so plainly in
+the overview and put every finding on the tip MR with its file noted — a broken mapping is
+worse than none. Details + the two failure modes it guards against: `stack-mode.md` § 4.
+
 Write `findings.json` (all entries, sequential `id` field, summaries included) and `meta.json`:
 
 ```json
@@ -258,7 +311,16 @@ If the head moved or the target advanced since the review, set `snapshot_moved: 
 **say so in the verdict message** ("reviewed at `<short_sha>`; target has advanced since —
 re-check conflicts") rather than silently reporting a stale result.
 
-Verdict policy: **merge conflicts OR** build broken OR any P0/P1 → 🔄 Request Changes; P2-only → ⚠️ Approve with minor fixes; clean → ✅ Approve. **A conflicting MR is never Approve** — its verdict is `🔄 Request Changes — conflicts with <target>` (also add a P1 conflict finding). Append the build result too, e.g. `🔄 Request Changes — build ❌ (2 analyzer errors)`. Already-merged MRs: note "fold into follow-up"; build + conflict checks skipped.
+Verdict policy: **merge conflicts OR** build broken **OR build unverified** OR any P0/P1 → 🔄 Request Changes; P2-only → ⚠️ Approve with minor fixes; clean → ✅ Approve. **A conflicting MR is never Approve** — its verdict is `🔄 Request Changes — conflicts with <target>` (also add a P1 conflict finding). **An unverified build is never Approve either** — Reviewer D returning `"compiles": null` on an open MR (toolchain unresolved, install failed, analyzer could not run) blocks exactly as a broken build does: verdict `🔄 Request Changes — build ⚠️ unverified (<what failed>)`, plus D's P1 finding. "Couldn't verify" must never be read as "passes". Append the build result too, e.g. `🔄 Request Changes — build ❌ (2 analyzer errors)`. Already-merged MRs: note "fold into follow-up"; build + conflict checks skipped (`"compiles": null` there is expected and not a blocker).
+
+**Stack mode: one verdict for the stack.** Compute it from the cumulative review under the
+same policy and record it on the **tip** MR. Every other MR in the chain carries only a
+short note pointing at the stack overview — never its own contradictory verdict (an MR
+whose own diff looks clean is not Approve while its stack is blocked). Put the chain map,
+the chosen merge policy and the per-MR finding counts in the overview. In **piecemeal**
+mode an MR failing its own build gate is additionally blocked on its own — say which of
+the two blocked it. The Slack verdict message carries the single stack verdict plus the
+chain line, not ten per-MR verdicts.
 
 Each MR gets a `fix_prompt`: a self-contained prompt the developer pastes into Claude Code. **Use the full template in `references/reviewer-prompts.md` § Fix-prompt template verbatim** — it forces the fixer to (1) read CLAUDE.md + all ADRs and the surrounding code first, (2) fix the root cause and explicitly forbids cosmetic non-fixes (adding comments, reformatting, suppressing lints, swallowing errors, deleting code/tests), (3) verify with codegen/format/analyze/tests and explain each fix against a rule/ADR. Every finding line must include `file:line` + the required end state, not just the symptom.
 

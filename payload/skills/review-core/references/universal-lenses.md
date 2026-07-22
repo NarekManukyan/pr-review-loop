@@ -107,7 +107,15 @@ Fix the reference or the misleading name.
   `git fetch origin <target>; git merge-tree $(git merge-base HEAD origin/<target>) HEAD origin/<target>`
   and grep for `<<<<<<<`. A conflicting PR is **never** approved (P1 blocker).
 - A fix may live in a **stacked MR** (target branch = another open MR's source) — check
-  before re-asserting a finding as unaddressed.
+  before re-asserting a finding as unaddressed. This check is **mandatory, not advisory**,
+  for any "not wired / not registered / no caller / never published / does not exist"
+  finding: verify at the **stack tip** by reading the code there, never by grepping for a
+  symbol name you assumed. See `personas.md` § "Reading the code".
+- **The structural fix for this is stack mode** (`stack-mode.md`): when the chain merges
+  atomically, review the **cumulative diff at the tip** as one unit instead of reviewing
+  intermediate states that never reach `main`. The per-MR check above is then automatic —
+  you are already at the tip. Only ask for it when the chain merges **piecemeal**, where
+  each intermediate state genuinely does land on `main`.
 
 ## U10 — CI parity (owned by Reviewer D, stated here as principle)
 **Principle:** the review must run what the repo's CI runs, not a generic build. A green
