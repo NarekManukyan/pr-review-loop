@@ -3,6 +3,29 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.16.1
+
+Fixed
+- **GitLab inline comments now actually anchor to the diff.** Every comment the GitLab
+  front-end posted was landing as a plain MR-level note. Two encodings return success and
+  silently do not anchor: `glab api -f "position[new_line]=N"` returns `201` with
+  `type: DiscussionNote` (`-f` cannot encode nested objects), and `glab api --input
+  body.json` returns **HTTP 415** (`content-type ''`). The fix is one flag —
+  `-H "Content-Type: application/json"` alongside `--input` — which yields a real
+  `type: DiffNote`. `line_code`/`line_range` are *not* required for single-line comments,
+  contrary to what GitLab's 400 error text implies. `/review-pr` step 6 now carries the
+  exact call, the failure table, and the instruction to assert `type == "DiffNote"` on the
+  response rather than trusting the `201`.
+- **Anchorability is now computed up front.** A finding whose line falls outside the MR's
+  diff hunks cannot anchor at all and must post as an MR-level note with `` `path` : line N ``
+  in the body. The command now says to parse the `/diffs` hunk headers before posting, and
+  names the three recurring cases: pre-existing code (most `UNKNOWN` rows from
+  `attribute-findings.sh`), files marked `binary` in `.gitattributes` (`.arb` localization
+  files typically are), and skipped generated files. Measured 16 inline / 12 MR-level on a
+  real 2-MR stack.
+- **Replacement ordering.** Post the anchored note *before* deleting the note it
+  supersedes, so a failed POST cannot drop a finding.
+
 ## 1.16.0
 
 Added

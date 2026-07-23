@@ -174,6 +174,48 @@ skip any single file whose diff exceeds ~15k tokens, cap total material ~60k tok
    **conflicts with its target** (verify with `git merge-tree`, not just the API flag —
    U9) is a P1 blocker and can never be Approve.
 
+   **Posting an inline comment on GitLab — the exact call.** A comment only anchors to
+   the diff when GitLab returns `"type": "DiffNote"`. Two encodings look like they work
+   and silently do not:
+
+   | Attempt | Result |
+   |---|---|
+   | `glab api -f "position[new_line]=52" …` | **201, but `type: DiscussionNote`** — a plain MR-level note. `-f` does not encode nested objects. |
+   | `glab api --input body.json` | **HTTP 415** `The provided content-type '' is not supported.` |
+   | `glab api -H "Content-Type: application/json" --input body.json` | ✅ `type: DiffNote` |
+
+   The whole fix is the `-H` header. `line_code` and `line_range` are **not** required
+   for single-line comments, despite what the 400 error text suggests.
+
+   ```bash
+   # diff_refs come from the MR itself — each MR in a stack has its own set
+   glab api --repo "$REPO" "projects/:id/merge_requests/$IID" --jq .diff_refs
+   cat > /tmp/note.json <<'JSON'
+   { "body": "…",
+     "position": { "position_type": "text",
+       "base_sha": "…", "start_sha": "…", "head_sha": "…",
+       "new_path": "path/to/file.dart", "old_path": "path/to/file.dart",
+       "new_line": 52 } }
+   JSON
+   glab api --repo "$REPO" -X POST "projects/:id/merge_requests/$IID/discussions" \
+     -H "Content-Type: application/json" --input /tmp/note.json
+   ```
+
+   `new_line` only for an **added** line; add `old_line` too for an unchanged **context**
+   line inside a hunk. Always assert `type == "DiffNote"` on the response — a `201` alone
+   does not mean it anchored.
+
+   **A line outside the MR's diff hunks cannot anchor at all**, so post those as
+   MR-level notes with `` `path` : line N `` in the body. Expect this for: pre-existing
+   code (which is most `UNKNOWN` rows from `attribute-findings.sh`), files marked
+   `binary` in `.gitattributes` (`.arb` localization files commonly are — they produce no
+   hunks), and generated files the caps skipped. Compute anchorability up front by
+   parsing `…/merge_requests/$IID/diffs` hunk headers rather than discovering it per
+   POST. On a real 2-MR stack this split was 16 inline / 12 MR-level.
+
+   **Post the anchored note before deleting any note it replaces**, so a failure cannot
+   drop a finding.
+
 7. **After inline comments, post a top-level overview** (`gh pr comment <N> --repo
    OWNER/REPO --body "…"` / `glab mr note <N>`) — same text in terminal and on the PR.
    Sections: **Summary** · **Stack & packs loaded** (the resolver line) · **✅ Resolved
