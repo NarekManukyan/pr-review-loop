@@ -3,6 +3,27 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.16.2
+
+Fixed
+- **Stack mode no longer drops the previous round's threads.** Stack mode changes how the
+  diff is assembled, not the re-review flow — but because chain detection and the
+  cumulative diff run *before* the panel, the natural next move is to spawn reviewers and
+  post a fresh round, leaving prior threads open and author replies unacknowledged. On a
+  real `!35 → !36` review, 39 threads carried "Fixed in `<sha>`" replies and none were
+  resolved, while the new overview asserted the prior blockers were fixed on the strength
+  of 5 spot-checks out of 39. `stack-mode.md` gains a step 5 covering reconciliation
+  across **every** MR in the chain, with the GitLab reply+resolve calls.
+- **Stated the re-review trigger explicitly:** a new round is owed whenever commits landed
+  after the previous round's comments — compared per MR, independent of the stack.
+- **Restated U9 for resolution:** verify every "fixed" claim by reading the code at the
+  tip. Neither the author's word nor `resolved=true` is evidence. Locate the code **by
+  content** — the `file:line` in the old comment is stale by construction, since the fix
+  changed the file — and when a fix is described as a consolidation, read the shared
+  target and confirm it has the property the finding demanded, since consolidation can
+  move a defect rather than remove it. Never bulk-resolve; never delete the prior round's
+  comments to supersede them.
+
 ## 1.16.1
 
 Fixed

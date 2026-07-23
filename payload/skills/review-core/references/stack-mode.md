@@ -145,7 +145,45 @@ originating file noted.** Do not ship a partial or guessed mapping.
 
 ---
 
-## 5. Verdict
+## 5. Reconcile the previous round's threads — do not skip this in stack mode
+
+Stack mode replaces *how the diff is assembled*, *not* the re-review flow. Step 4b of
+`/review-pr` (classify every open thread, reply, resolve) still applies, and applies to
+**every MR in the chain**, not just the tip.
+
+It is easy to lose: the chain-detection and cumulative-diff work happens before the panel,
+so the natural next move is to spawn reviewers and post a new round — leaving the previous
+round's threads open and the author's replies unacknowledged. On the real `!35 → !36`
+review this is exactly what happened: 39 threads carried author replies of the form
+"Fixed in `<sha>`" and **none** were resolved, while the new round's overview asserted the
+prior blockers were fixed on the strength of 5 spot-checks out of 39.
+
+Two rules:
+
+- **A new round is owed whenever commits landed after the previous round's comments.**
+  Compare each MR's newest review-comment timestamp against its commit dates; that is the
+  trigger, per MR, independent of the stack.
+- **Verify every "fixed" claim at the tip before resolving** (U9). The author's word is
+  not evidence, and neither is `resolved=true`. Read the code. Locate it **by content** —
+  the `file:line` in the old comment is stale by construction, since the fix changed the
+  file. A consolidation ("I replaced X with the shared Y") can move a defect rather than
+  remove it, so go read Y and confirm it has the property the finding demanded.
+
+Never bulk-resolve, and never delete the previous round's comments to "supersede" them —
+the author's in-thread replies are the record of what changed and why.
+
+```bash
+# GitLab: reply, then resolve
+glab api --repo "$REPO" -X POST \
+  "projects/:id/merge_requests/$IID/discussions/$DISCUSSION_ID/notes" -f body="✅ Resolved — <evidence>"
+glab api --repo "$REPO" -X PUT \
+  "projects/:id/merge_requests/$IID/discussions/$DISCUSSION_ID?resolved=true"
+```
+
+Anything that does not hold up gets `⚠️ Still unresolved — <what remains>` and stays open;
+it also carries into the new round's overview under **⚠️ Still Open from previous rounds**.
+
+## 6. Verdict
 
 **One verdict for the stack**, computed from the cumulative review under the existing
 policy (conflicts OR broken build OR **unverified** build OR any P0/P1 → Request Changes).
