@@ -39,6 +39,33 @@ gh pr list --repo OWNER/REPO --state open --json number,headRefName,baseRefName
 A single MR whose target is another open MR's source is still a chain of two — the
 policy question below applies to it exactly the same way.
 
+### Assert the chain is merged forward — before reviewing anything
+
+Stack mode reviews the **tip** on the premise that the tip contains the whole chain. Verify
+that; never assume it. For every branch below the tip:
+
+```bash
+for b in "${CHAIN[@]}"; do
+  git merge-base --is-ancestor "origin/$b" "$TIP_SHA" \
+    && echo "$b in tip" || echo "$b NOT IN TIP"
+done
+```
+
+**Any `NOT IN TIP` means the stack cannot be reviewed at its tip yet.** Say so and stop —
+a verdict computed from a tip that is missing its parents' work describes a tree nobody
+will run, which is the exact failure this mode exists to prevent. Ask the authors to merge
+each branch forward into its child, bottom to top, and re-run afterwards.
+
+This is easy to miss because **every MR looks freshly updated**. On the real `!41 → !53`
+chain each of the ten branches independently received its own "bump `design_system` to
+v1.0.15" commit on the same afternoon, so every head had a new timestamp and every MR
+reported `mergeable` — while the tip contained none of the accompanying fixes, including a
+new bloc test added on the bottom MR. The per-MR "did the dev push?" check said yes ten
+times; the ancestry check said the tip was the oldest state in the chain.
+
+Running the build gate on such a tip produces a **misleading green**. Report it explicitly
+as a stale snapshot if you report it at all.
+
 ---
 
 ## 2. Ask the merge policy — this decides correctness

@@ -3,6 +3,24 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.16.3
+
+Added
+- **Stack detection now asserts the chain is merged forward before any review happens.**
+  Stack mode reviews the tip on the premise that the tip contains the whole chain;
+  `stack-mode.md` step 1 now requires proving it with
+  `git merge-base --is-ancestor origin/<branch> <tip>` for every branch below the tip, and
+  stopping if any comes back NOT IN TIP.
+- Documented why this is invisible without the check: on the real `!41 → !53` chain, all
+  ten branches independently received their own "bump design_system to v1.0.15" commit on
+  the same afternoon, so every head had a fresh timestamp and every MR reported
+  `mergeable` — while the tip contained none of the accompanying work, including a bloc
+  test added on the bottom MR. A per-MR "did the developer push?" check answers yes ten
+  times and still misses it.
+- Warned that the build gate on such a tip produces a **misleading green** (0 analyzer
+  errors on a tree missing its parents' commits), and must be reported as a stale snapshot
+  or not at all.
+
 ## 1.16.2
 
 Fixed
