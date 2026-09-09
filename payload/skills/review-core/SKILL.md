@@ -19,7 +19,7 @@ Both call this engine so review quality is identical and defined once.
 |---|---|
 | `references/resolver.md` | Detect stack + libraries → choose which lens pack(s) to load. Run FIRST. |
 | `references/universal-lenses.md` | U1–U14: stack-agnostic review principles (the WHAT). Always applied. |
-| `references/personas.md` | Reviewers A/B/C + **D (Build & CI parity, runs on haiku)** + **E (Seams & Blast Radius: U5/U13/U14 + parallel-structure sweep)** + **F (Spec & AC completeness)**, and the "Reading the code" contract (diff in, reads on demand). |
+| `references/personas.md` | Reviewers A/B/C + **D (Build & CI parity, runs on haiku)** + **E (Seams & Blast Radius: U5/U13/U14 + parallel-structure sweep)** + **F (Spec & AC completeness)**, the "Reading the code" contract (diff in, reads on demand), the **House conventions / owned-code** rule, and the **reporting cap** (P0/P1 threaded, P2s digested). |
 | `references/stack-mode.md` | **Stacked chains**: detect the chain, ask the merge policy (atomic vs piecemeal), review the cumulative diff at the tip as ONE unit, attribute findings back to the introducing MR, one verdict. Run after the resolver whenever >1 MR is in play. |
 | `references/spec-ac.md` | Reviewer F procedure: repo→Jira routing, AC extraction, per-AC verdicts, MR-description fallback. |
 | `config/jira-routing.json` | Repo (GitLab group) → Jira site map used by the AC pass. Matches on site host, not hashed server IDs, so multiple Jira accounts coexist. |
@@ -46,6 +46,14 @@ Both call this engine so review quality is identical and defined once.
 4. **Deliver** — the front-end formats/dedupes/posts (see its own SKILL/command).
 
 ## Non-negotiables (inherited by both front-ends)
+- **Delivery is capped, detection is not** (`personas.md` § Reporting). P0/P1 always get
+  their own thread; P2s go in the overview digest by default, at most 10 P2 threads per
+  round and 25 inline threads total. Over the cap, digest the remainder. A review the
+  author skims is worse than a shorter one they read.
+- **Owned code raises severity, invented conventions are not findings**
+  (`personas.md` § House conventions). A change to boilerplate/vendored/widely-imported
+  code is P1 when it alters behaviour or generated output for callers outside the feature.
+  A convention with zero existing uses in the repo is a suggestion, never a blocker.
 - FACT vs ASSUMPTION: a finding must cite exact code; verify claims at HEAD, not from
   `resolved=true`/stale merge flags (universal lens **U9**).
 - Skip generated files (`*.g.dart`, `*.freezed.dart`, `*.gen.dart`, `*.pb.go`,

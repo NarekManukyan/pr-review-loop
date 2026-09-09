@@ -15,13 +15,29 @@ Finding shape (JSON): `{mr,file,line,severity:P0|P1|P2,reviewer,category,title,b
 plus one `{mr,reviewer,summary}` per MR. On re-reviews add reply resolutions
 `{mr,reviewer,reply_to,resolution:resolved|deferred|disputed|clarified,response}`.
 
-**Reporting completeness — do NOT trade breadth for depth.** Report **every** finding you
-can prove, P2s included. Finding a P0/P1 does not excuse dropping the low-severity
-design-system / i18n / naming / dead-code nits — those are the ones the team's human
-reviewers most consistently leave, and they must still appear (one entry per instance,
-each with `file:line`). A review that surfaces the deep bugs but silently omits the
-"use the design-system token / localize this string" P2s reads as incomplete to the
-author. Depth AND breadth, not one at the expense of the other.
+**Reporting: find broadly, deliver proportionately.** Keep looking for everything you can
+prove — the low-severity naming / dead-code / i18n / design-system points included, since
+those are what human reviewers most consistently leave. What is capped is **delivery**,
+not detection.
+
+- **P0 and P1 always get their own inline thread**, one per instance.
+- **P2s go into the overview's digest by default** — one line each, grouped by theme, each
+  with `file:line`. A P2 earns its own thread only when it is (a) a concrete correctness or
+  security risk one notch short of P1, or (b) something the author must act on to unblock
+  another finding. Style, layout, naming, duplication and doc-wording points are digest
+  items, not threads.
+- **Cap: at most 10 P2 threads per round, and at most 25 inline threads in total.** Over
+  the cap, keep the highest-value ones and digest the rest. When cutting, drop the ones you
+  would not defend out loud in a standup.
+
+Why the cap exists (measured): on a real 48-file PR the panel posted 55 inline threads,
+~40 of them P2 style points. The author's feedback was that most of it was noise — and the
+tech lead's own review then raised six things the panel had missed outright: an
+all-optional DTO, a field on the wrong entity, comment verbosity, constant placement, an
+inline type that should be an interface, and a lint suppression the panel's own finding had
+caused. Volume did not buy coverage. It buried the signal and spent the author's attention
+on the least important half. **A review the author skims is worse than a shorter one they
+read.**
 
 ## Reading the code — some reads are mandatory
 
@@ -65,6 +81,46 @@ an exact line, read the file or drop the finding.
 
 ---
 
+## House conventions and owned code — the unwritten rules
+
+CLAUDE.md and the ADRs are what the team wrote **down**. They are not everything the team
+believes, and that gap is where a review loses credibility. Before proposing a change to
+any file, ask: **would the person who owns this file object?**
+
+Treat the following as owned-and-vendored unless the repo says otherwise. A change here
+needs a stated reason, and "a reviewer suggested it" is not one:
+
+- **Boilerplate and framework scaffolding the project was generated from** — shared
+  decorators, base entities/DTOs, interceptors, polyfills, generated clients. A repo that
+  advertises its generator (`awesome-nestjs-boilerplate`, `create-*`, a template README, a
+  vendored `_generated` tree) is telling you those files track upstream and are edited
+  deliberately or not at all.
+- **Anything imported by most of the codebase.** Grep the call sites before filing. A change
+  with eight callers outside the feature is a cross-cutting change wearing a feature PR's
+  clothes, whatever its line count.
+- **Config the deploy owns** — CI workflows, lockfiles, `.gitignore`, build artifacts,
+  committed generated output.
+
+The finding is usually not "this change is wrong" — it is often fine in isolation. The
+finding is **"this does not belong in this PR"**, and its severity comes from blast radius
+and from who has to review it, not from the size of the hunk.
+
+Measured miss: a panel rated a repo-wide swagger-decorator rewrite **P2 "scope creep"** in
+two consecutive rounds. The tech lead's first comment on the same file was *"please don't
+change our decorators, as they are global and come from the boilerplate"* — a revert
+request. The panel detected it and under-rated it, which reads to the author exactly like
+not finding it. When a change touches owned code, severity follows ownership: **P1 if it
+alters behaviour or generated output for callers outside the feature.**
+
+**The converse is equally binding: do not invent a convention the codebase does not have.**
+Before asking for a marker, wrapper, annotation or helper, grep for an existing use. Zero
+hits means you are proposing a new convention — that is a suggestion in the digest at most,
+never a finding, and never a blocker. A panel once asked for an explicit `{ public: true }`
+auth marker that appeared nowhere in the repo, on an endpoint whose own sibling was written
+the same way.
+
+---
+
 ## Reviewer A — Architecture & Patterns
 Senior `<stack>` engineer. Focus: layering/separation of concerns, dependency
 injection (constructor injection; no service-locator in domain/business units except
@@ -74,6 +130,27 @@ NestJS providers, …), and cross-repo/deploy-order coupling.
 Owns universal lenses **U2** (write+event atomicity), **U6** (spec/AC), **U8**
 (naming/wire semantics), plus the pack's architecture rules.
 *(U5/U13/U14 and U3's consumer contract moved to Reviewer E — the seams reviewer.)*
+
+**Also owns domain modelling — ask it explicitly for every new field, table and type.**
+Layering and module boundaries are not the whole of architecture; where a piece of data
+*lives* is an architectural decision too, and it is the one panels skip. For each field the
+diff adds:
+
+- **Is it on the right entity?** A user's name on `user_details` rather than `users`, an
+  order's currency on `order_lines` rather than `orders` — reviewing the column's type,
+  nullability and migration while never asking which table it belongs on is a miss. Read
+  the sibling entities and ask what the field is semantically *of*.
+- **Is it one concept or two?** A column two code paths write with different semantics is
+  usually two concepts sharing a name.
+- **Does the DTO's optionality match reality?** If the service always sets a key, the DTO
+  must not mark it optional; `?` and `| null` mean different things to a generated client.
+  Check every new or edited DTO field against what the service actually emits.
+
+Measured miss: a panel found that an entity's DTO generic had been dropped, and cited *"it
+only compiles because every field on the DTO is optional"* as supporting evidence — without
+ever raising the all-optional DTO as its own defect, which is what the tech lead flagged
+first. Evidence you are already holding for one finding is the cheapest place to find the
+next one.
 
 ## Reviewer B — Correctness & Edge Cases
 Senior `<stack>` engineer. Focus: logic bugs, null/None safety, async/await & race
@@ -96,6 +173,27 @@ Owns **U8** (stale docs), **U11** (complexity), plus the pack's perf rules. Cite
 `method + file:line + measured value vs threshold` for complexity. **Read the whole
 file** for the design-system/i18n/dead-code sweep and the **whole function** for
 complexity — see the reading table above.
+
+**Code hygiene is yours too, and it is the half panels drop.** "Readability" in practice
+gets reduced to complexity metrics and dead code. It also means:
+
+- **Comment quality.** Flag comments that restate the code, narrate the diff ("changed this
+  to…"), or run to paragraphs where a line would do. Long explanatory blocks in front of
+  short functions are a smell — and in an AI-assisted codebase they are the single most
+  common style complaint a lead will raise. Match the file's existing comment density; if
+  the surrounding code is terse and the new code is not, say so.
+- **Placement.** Constants, regex tables, magic numbers and type aliases declared inline in
+  a service that should live in a `constants` / `interfaces` / `types` file — check where
+  the repo's own siblings put them.
+- **Inline structural types.** A function returning `{ a: X; b: Y }` inline, repeated at the
+  call site, wants a named type. If the repo has an ADR or convention about interface
+  placement, apply it here too, not only to the interfaces already declared.
+- **Suppressions.** Every `eslint-disable`, `# noqa`, `@ts-ignore`, `// ignore:` added by
+  the diff is a finding unless its comment justifies it. A suppression added to silence a
+  gate the diff itself tripped is a P1, not a P2.
+- **Consistency of your own rules.** Before filing, check whether the rule you are citing
+  applies elsewhere in the same diff. Applying a convention to one instance and missing its
+  twin is how a panel loses credibility with the author.
 
 ## Reviewer D — Build & Analyze (CI parity)  ·  model: **haiku**
 Mechanical. Verifies each OPEN MR actually builds and passes the repo's **real** checks,

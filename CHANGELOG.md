@@ -3,6 +3,61 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.17.0
+
+Changed
+- **Review delivery is now capped; detection is not.** `personas.md`'s reporting rule used
+  to read "Report **every** finding you can prove… Depth AND breadth, not one at the
+  expense of the other." That instruction is what produced the failure below, so it is
+  replaced: keep hunting for everything, but **P0/P1 get their own inline thread and P2s go
+  into the overview digest by default** — one line each, grouped by theme, with
+  `file:line`. A P2 earns a thread only when it is a concrete correctness or security risk
+  one notch short of P1, or when the author must act on it to unblock another finding.
+  Hard cap: **10 P2 threads per round, 25 inline threads total.**
+- Measured case: on a real 48-file NestJS PR the panel posted **55 inline threads, ~40 of
+  them P2 style points**. The author's feedback was that most of it was noise, and the tech
+  lead's own review then raised **six things the panel had missed outright** — an
+  all-optional DTO, a field on the wrong entity, comment verbosity, constant placement, an
+  inline type that should have been an interface, and a lint suppression the panel's own
+  finding had caused. Volume did not buy coverage; it buried the signal and spent the
+  author's attention on the least important half.
+
+Added
+- **House conventions and owned code** — a new shared section in `personas.md`, applied by
+  every reviewer before proposing a change to any file: *would the person who owns this
+  file object?* Boilerplate and generated scaffolding, anything imported across the
+  codebase, and deploy-owned config (CI, lockfiles, `.gitignore`, build artifacts) are
+  owned-and-vendored; a change there needs a stated reason. The finding is usually not
+  "this is wrong" but **"this does not belong in this PR"**, and severity follows blast
+  radius: **P1 when it alters behaviour or generated output for callers outside the
+  feature.** Measured case: the panel rated a repo-wide swagger-decorator rewrite P2 "scope
+  creep" in two consecutive rounds; the tech lead's first comment on that file was "please
+  don't change our decorators, as they are global and come from the boilerplate" — a revert
+  request. Detected and under-rated reads to the author exactly like not found.
+- **The converse, stated as binding:** do not invent a convention the codebase does not
+  have. Grep for an existing use before asking for a marker, wrapper or annotation; zero
+  hits makes it a digest suggestion at most, never a blocker. The same review asked for an
+  explicit `{ public: true }` auth marker that appeared nowhere in the repo, on an endpoint
+  whose own sibling was written the same way.
+- **Reviewer A now owns domain modelling.** Where data *lives* is an architectural decision
+  and it is the one panels skip. Per new field: is it on the right entity (a user's name on
+  `user_details` rather than `users`), is it one concept or two, and does the DTO's
+  optionality match what the service actually emits. Measured case: the panel found a
+  dropped DTO generic and cited "it only compiles because every field on the DTO is
+  optional" as *supporting evidence*, without ever raising the all-optional DTO as its own
+  defect — which is what the lead flagged first. Evidence already in hand for one finding
+  is the cheapest place to find the next.
+- **Reviewer C now owns code hygiene explicitly.** "Readability" was collapsing to
+  complexity metrics and dead code. It now also covers comment quality (comments that
+  restate the code, narrate the diff, or run to paragraphs — the most common style
+  complaint a lead raises in an AI-assisted codebase; match the file's existing density),
+  placement of constants/regex tables/type aliases that belong in `constants`/`interfaces`,
+  inline structural types that want a name, **every suppression the diff adds** (a
+  suppression silencing a gate the diff itself tripped is P1, not P2), and consistency of
+  the reviewer's own rules within one diff.
+- Both new rules are mirrored in `SKILL.md`'s non-negotiables so `/review-pr` and
+  `review-pr-slack` inherit them.
+
 ## 1.16.3
 
 Added
