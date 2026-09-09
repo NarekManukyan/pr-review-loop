@@ -3,6 +3,35 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.18.0
+
+Fixed
+- **Bundled skills could silently never update.** The SessionStart hook gated its sync on
+  `SKILL.md`'s mtime alone (`[ "$s/SKILL.md" -nt "$dst/SKILL.md" ]`) while copying the
+  whole directory. Git only rewrites files a commit actually changed, so any release that
+  touched only `references/` left `SKILL.md`'s mtime untouched and the sync never fired.
+  Reproduced in a sandbox: a release changing only `references/personas.md` was skipped
+  outright, leaving the installed engine at the previous revision while the plugin
+  reported the new version. `references/` is where most of this plugin's releases land
+  (personas, universal lenses, stack packs), so the common case was the broken one.
+  The gate is now the **plugin version**, plus a `find -newer` sweep of the whole payload
+  tree so local iteration still propagates without a version bump. Verified idempotent:
+  re-running does not re-copy.
+
+Added
+- **Skills now record which plugin version installed them.** Both `install.sh` and the
+  SessionStart hook write `.installed-version` into each skill directory. Skills are
+  copied into `~/.claude/skills/` and are *not* versioned with the plugin, so a stale
+  engine could sit behind a current plugin version with nothing to show it.
+- **`/review-pr-doctor` reports engine version against plugin version**, before the
+  file-level drift check added in 1.17.1:
+  - `review-core — engine is v1.16.2, plugin is v1.17.1 — stale, re-run install.sh or
+    restart the session`
+  - `slack-send — installed before version stamping; re-run install.sh to label it`
+  This matters for teams: two developers on the same plugin version can hold different
+  engines, and before this there was no way to see it. `.installed-version` is excluded
+  from the drift diff so the marker itself never reads as drift.
+
 ## 1.17.1
 
 Added

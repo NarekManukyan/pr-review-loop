@@ -31,7 +31,10 @@ case ":$PATH:" in
      echo '        export PATH="$HOME/.local/bin:$PATH"' ;;
 esac
 
-echo "Installing bundled skills -> ~/.claude/skills/"
+PLUGIN_VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+                  "$SRC/.claude-plugin/plugin.json" 2>/dev/null | head -1)"
+[ -z "$PLUGIN_VERSION" ] && PLUGIN_VERSION="unknown"
+echo "Installing bundled skills -> ~/.claude/skills/ (v$PLUGIN_VERSION)"
 # Back up any existing copy OUTSIDE ~/.claude/skills — an in-place "<name>.bak" dir
 # still contains a SKILL.md, so Claude Code would register it as a duplicate skill.
 BACKUP_DIR="$HOME/.claude/.pr-review-loop-backups"
@@ -43,7 +46,10 @@ for s in "$SRC"/payload/skills/*/; do
     mv "$HOME/.claude/skills/$name" "$BACKUP_DIR/$name"
   fi
   cp -R "$s" "$HOME/.claude/skills/$name"
-  echo "  - $name"
+  # Stamp which plugin version produced this copy, so the SessionStart hook can
+  # tell "up to date" from "stale engine" and /review-pr-doctor can report it.
+  printf '%s\n' "$PLUGIN_VERSION" > "$HOME/.claude/skills/$name/.installed-version" 2>/dev/null || true
+  echo "  - $name ($PLUGIN_VERSION)"
 done
 # One-time cleanup: remove stale in-place *.bak skill dirs left by older installers
 # (they registered as duplicate skills). The real skills were just (re)installed above.

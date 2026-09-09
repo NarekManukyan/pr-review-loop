@@ -126,8 +126,27 @@ echo "skill drift (installed copy vs plugin source):"
 # The source of truth is the repo's payload/skills. Nothing keeps them in sync, so a live
 # edit to the installed copy is invisible until the next install.sh silently reverts it.
 PSRC="$HOME/.claude/plugins/marketplaces/pr-review-loop/payload/skills"
+PMANIFEST="$HOME/.claude/plugins/marketplaces/pr-review-loop/.claude-plugin/plugin.json"
 if [ -d "$PSRC" ]; then
   drift=0
+  # Which plugin version produced each installed copy? Skills are copied into
+  # ~/.claude/skills and are NOT versioned with the plugin, so a stale engine can
+  # sit behind a current plugin version. .installed-version is written on sync.
+  PV="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$PMANIFEST" 2>/dev/null | head -1)"
+  [ -z "$PV" ] && PV="unknown"
+  for s in "$PSRC"/*/; do
+    name="$(basename "$s")"
+    stamp="$HOME/.claude/skills/$name/.installed-version"
+    if [ ! -d "$HOME/.claude/skills/$name" ]; then
+      continue                                  # reported as "not installed" below
+    elif [ ! -f "$stamp" ]; then
+      warn "$name — installed before version stamping; re-run install.sh to label it (plugin is $PV)"
+      drift=1
+    elif [ "$(cat "$stamp" 2>/dev/null)" != "$PV" ]; then
+      warn "$name — engine is v$(cat "$stamp" 2>/dev/null), plugin is v$PV — stale, re-run install.sh or restart the session"
+      drift=1
+    fi
+  done
   for s in "$PSRC"/*/; do
     name="$(basename "$s")"
     dst="$HOME/.claude/skills/$name"
@@ -139,6 +158,7 @@ if [ -d "$PSRC" ]; then
     # node_modules/package-lock are produced by install.sh's npm install and exist
     # only in the installed copy — not drift.
     out="$(diff -rq --exclude=node_modules --exclude=package-lock.json \
+           --exclude='.installed-version' \
            --exclude='*.bak' --exclude='.DS_Store' "$s" "$dst" 2>/dev/null)"
     if [ -n "$out" ]; then
       warn "$name — differs from plugin source:"

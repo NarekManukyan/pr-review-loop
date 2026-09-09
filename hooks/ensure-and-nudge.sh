@@ -12,15 +12,37 @@ set -u
 
 SKILLS_DEST="$HOME/.claude/skills"
 PAYLOAD="${CLAUDE_PLUGIN_ROOT:-}/payload/skills"
+STAMP=".installed-version"   # per-skill marker: which plugin version installed this copy
 
-# 1. sync bundled skills (copy when missing or plugin copy is newer) — idempotent
+# 1. sync bundled skills into ~/.claude/skills — idempotent.
+#
+# This used to gate on SKILL.md's mtime alone, which was wrong: git only rewrites
+# files a commit actually changed, so a release touching only references/ left
+# SKILL.md's mtime untouched and the sync never fired. The install kept a stale
+# engine while reporting the new plugin version — and references/ is where most
+# of this plugin's releases land (personas, lenses, stack packs).
+#
+# Gate on the plugin version instead, and keep an mtime sweep of the whole tree so
+# local iteration on payload/ still propagates without a version bump.
 if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -d "$PAYLOAD" ]; then
   mkdir -p "$SKILLS_DEST"
+  PLUGIN_VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+                    "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json" 2>/dev/null | head -1)"
+  [ -z "$PLUGIN_VERSION" ] && PLUGIN_VERSION="unknown"
   for s in "$PAYLOAD"/*/; do
     [ -d "$s" ] || continue
     dst="$SKILLS_DEST/$(basename "$s")"
-    if [ ! -e "$dst" ] || [ "$s/SKILL.md" -nt "$dst/SKILL.md" ]; then
+    need=0
+    if [ ! -e "$dst" ] || [ ! -f "$dst/$STAMP" ]; then
+      need=1                                              # never installed, or pre-stamp install
+    elif [ "$(cat "$dst/$STAMP" 2>/dev/null)" != "$PLUGIN_VERSION" ]; then
+      need=1                                              # plugin moved: ship the new engine
+    elif [ -n "$(find "$s" -newer "$dst/$STAMP" -print -quit 2>/dev/null)" ]; then
+      need=1                                              # payload edited since last sync
+    fi
+    if [ "$need" -eq 1 ]; then
       cp -R "$s" "$dst" 2>/dev/null || true
+      printf '%s\n' "$PLUGIN_VERSION" > "$dst/$STAMP" 2>/dev/null || true
     fi
   done
 fi
