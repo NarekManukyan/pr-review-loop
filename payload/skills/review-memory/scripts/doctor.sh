@@ -121,4 +121,42 @@ else
 fi
 
 echo
+echo "skill drift (installed copy vs plugin source):"
+# The skills Claude Code loads live in ~/.claude/skills (install.sh copies them there).
+# The source of truth is the repo's payload/skills. Nothing keeps them in sync, so a live
+# edit to the installed copy is invisible until the next install.sh silently reverts it.
+PSRC="$HOME/.claude/plugins/marketplaces/pr-review-loop/payload/skills"
+if [ -d "$PSRC" ]; then
+  drift=0
+  for s in "$PSRC"/*/; do
+    name="$(basename "$s")"
+    dst="$HOME/.claude/skills/$name"
+    if [ ! -d "$dst" ]; then
+      warn "$name — in plugin source but not installed (run install.sh)"
+      drift=1
+      continue
+    fi
+    # node_modules/package-lock are produced by install.sh's npm install and exist
+    # only in the installed copy — not drift.
+    out="$(diff -rq --exclude=node_modules --exclude=package-lock.json \
+           --exclude='*.bak' --exclude='.DS_Store' "$s" "$dst" 2>/dev/null)"
+    if [ -n "$out" ]; then
+      warn "$name — differs from plugin source:"
+      printf '%s\n' "$out" | head -6 | sed 's/^/          /'
+      [ "$(printf '%s\n' "$out" | wc -l)" -gt 6 ] && echo "          … and more"
+      drift=1
+    fi
+  done
+  if [ "$drift" -eq 0 ]; then
+    pass "all installed skills match the plugin source"
+  else
+    echo "          fix: edits belong in the repo's payload/skills/ (that is what ships)."
+    echo "               source -> installed: re-run install.sh"
+    echo "               installed -> source: copy the file into payload/, then commit"
+  fi
+else
+  warn "plugin source not found at $PSRC — standalone install, drift check skipped"
+fi
+
+echo
 echo "Legend: PASS = ready · WARN = optional/only needed for some features · FAIL = fix before use."

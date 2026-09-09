@@ -42,4 +42,19 @@ Then:
      falls back to MR-description ACs (not wrong-account ACs).
    Optionally confirm end-to-end by fetching one known issue (e.g. `getJiraIssue` on the
    dz44 site for a `COM-*` key) — a summary coming back means Reviewer F is wired.
-6. End with a one-line verdict: ready to use, or the single most important thing to fix.
+6. **Skill drift.** The script compares each installed skill in `~/.claude/skills/`
+   against the plugin's `payload/skills/` source. They are two separate copies and
+   nothing keeps them in sync: `install.sh` copies source → installed, and a live edit to
+   the installed copy is invisible until the next install silently reverts it.
+   - **PASS** — nothing to say.
+   - **WARN `<skill>` differs** — say which files, then ask which direction is intended.
+     Edits belong in `payload/skills/` because that is what ships and what is in git.
+     If the user edited the installed copy (the common case, since that is the path the
+     commands load), copy the file back into `payload/` and commit it; otherwise re-run
+     `install.sh` to restore from source.
+   - **WARN not installed** — the skill is in the plugin but missing from
+     `~/.claude/skills/`; re-run `install.sh`.
+   - **WARN source not found** — a standalone (non-marketplace) install, so there is no
+     `payload/` to compare against. Not a problem, just an unchecked case.
+
+7. End with a one-line verdict: ready to use, or the single most important thing to fix.

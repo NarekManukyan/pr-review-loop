@@ -3,6 +3,25 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.17.1
+
+Added
+- **`/review-pr-doctor` now checks for skill drift.** The skills Claude Code actually
+  loads live in `~/.claude/skills/`; the source of truth is the repo's `payload/skills/`.
+  `install.sh` copies source → installed and nothing keeps them in sync afterwards, so an
+  edit made to the installed copy is invisible until the next install silently reverts it.
+  `doctor.sh` now diffs every installed skill against its `payload/` original and reports
+  PASS, or WARN naming the differing files. npm artifacts (`node_modules/`,
+  `package-lock.json`) are excluded since `install.sh` generates those into the installed
+  copy only. A standalone (non-marketplace) install has no `payload/` to compare against
+  and is reported as skipped rather than failing.
+- Measured case: this session's persona changes were written straight into
+  `~/.claude/skills/review-core/` and looked complete — the runtime does load from there —
+  while the repo copy stayed untouched at the previous revision. Nothing surfaced the
+  split until it was checked by hand, and the next `install.sh` would have reverted the
+  lot. The doctor command gains a step explaining which direction to sync and why edits
+  belong in `payload/`.
+
 ## 1.17.0
 
 Changed
