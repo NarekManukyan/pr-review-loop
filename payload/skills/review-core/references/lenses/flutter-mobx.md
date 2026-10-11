@@ -12,28 +12,45 @@ Often stacks with `flutter-provider` (stores provided via Provider). This overla
 
 ## Idiom rules
 
-### Mutations must run inside an action (maps U1/U2; B) — the #1 MobX trap
-- **Smell:** an `@observable` mutated **outside** an `@action`/`runInAction` — most
-  often **after an `await`** inside an async action. In MobX the action boundary ends at
-  the first `await`, so post-await mutations are un-batched (and throw under
-  `enforceActions`/strict `ReactiveConfig`). **P1**.
-- **Required:** wrap post-await mutations in `runInAction(() { … })` (or split into a
-  synchronous `@action`). e.g.
+### Mutations must run inside an action (maps U1/U2; B)
+- **An `@action` spans `await`, catch blocks included.** `mobx_codegen` emits an
+  `AsyncAction`, whose Zone carries the action context across every continuation —
+  the success path, a single-argument `catch (e)`, a two-argument
+  `catch (e, stackTrace)`, and a `finally` reached from either. **Verified by
+  measurement, not by reading `async_action.dart`.** That file forks the Zone with
+  `run` + `runUnary` and has a commented-out `_runBinary` labelled *"invoked for a
+  catch clause that has two arguments"* — that comment is a relic of the old
+  `Future.then(onError:)` lowering and leads to the wrong conclusion. Modern Dart
+  resumes an `await` with a unary continuation and runs the `try`/`catch` inside the
+  resumed body.
+- **Therefore: never flag a post-await mutation in an `@action` as needing
+  `runInAction`, in any branch.** This is the single most common MobX false positive,
+  and it survives a plausible-looking source reading — do not re-derive it.
   ```dart
   @action
   Future<void> load() async {
-    isLoading = true;                     // ok — before await
-    final data = await repo.fetch();
-    runInAction(() {                      // required — after await
-      items = ObservableList.of(data);
-      isLoading = false;
-      error = null;                       // clear stale error on success
-    });
+    _isLoading = true;
+    try {
+      _items = ObservableList.of(await repo.fetch());   // in the action
+    } on AppException catch (e, stackTrace) {
+      _error = e;                                        // still in the action
+    } finally {
+      _isLoading = false;                                // still in the action
+    }
   }
   ```
-- Clearing state on success/retry (`error = null`) must happen in an action too — a
-  MobX analogue of the BLoC copyWith-reset trap: verify a successful retry actually
-  clears the previous `error`/`errorKind`.
+- **The real smell:** a write from code with **no action context to inherit** — a
+  `Timer` callback, a stream listener, a raw `Future.then(onError:)`, or test code
+  mutating an `ObservableList`. Those genuinely assert: the default `writePolicy` is
+  `observed` and `enforceWritePolicy` asserts `_state.isWithinBatch` for an atom with
+  observers, so the write throws in debug and profile and the observer never sees it.
+  **P1** when it is app code on a path the UI reads.
+- **A write outside an action does not silently no-op** — under the default policy it
+  throws in debug. A finding claiming "the UI just won't rebuild" is the wrong
+  diagnosis.
+- Clearing state on success/retry (`error = null`) must still happen — a MobX analogue
+  of the BLoC copyWith-reset trap: verify a successful retry actually clears the previous
+  `error`/`errorKind`. That is about the *write existing*, not about wrapping it.
 
 ### Reactions must be disposed (maps U12; B) — leak class
 - **Smell:** `autorun`/`reaction`/`when` created in a store or widget whose returned
@@ -80,7 +97,9 @@ Inherits `_base-flutter`. MobX uses `build_runner` for `*.g.dart` store code —
 Inherits `_base-flutter`; MobX store codegen is `*.g.dart` (already skipped).
 
 ## Notes
-- Grep async `@action`s for a mutation after `await` not inside `runInAction` — the
-  highest-yield MobX check.
+- Do **not** grep async `@action`s for post-await mutations "missing" `runInAction` —
+  that check produces only false positives (see the action rule above). The
+  highest-yield real checks here are undisposed reactions and `Observer` builders that
+  do not read the observable they are supposed to track.
 - If the repo also uses `provider`, load `flutter-provider` too (store scoping/`dispose`
   overlaps).
