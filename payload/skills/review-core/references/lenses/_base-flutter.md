@@ -81,6 +81,20 @@ the sweep for the deep bugs; see personas.md "Reporting completeness").
   re-entrancy/debounce guard on the tap handler → duplicate network calls / wrong state.
   **P1**. Scope loading flags to the action (no full-screen spinner on a per-item tap).
 - Analytics fired regardless of success/failure inflates metrics with failures. **P2**.
+- **Tap target enlarged by a transparent box does not enlarge the hit area.**
+  `GestureDetector` defaults to `HitTestBehavior.deferToChild`, and
+  `SizedBox`/`Center`/`Padding`/`Align` are transparent to hit testing — so
+  `GestureDetector(child: SizedBox.square(dimension: 44, child: Center(child:
+  Icon(...))))` still only receives taps on the icon glyph. Check third-party tap
+  wrappers too (`flutter_scale_tap`'s `ScaleTap` builds a `Listener` + `GestureDetector`
+  with no `behavior`). Fix: `behavior: HitTestBehavior.opaque`, or a hit-testable box
+  (`ColoredBox`, `Material`). **P1** when the PR's stated goal is tap-target size — the
+  fix is then silently ineffective (real miss: mobile_app #238, four sites, shipped).
+  Conversely, an opaque full-screen view (`ColoredBox`) stacked over a tap-to-reveal
+  overlay swallows the reveal tap. **P2**.
+- Async init in a hook/`State` (`useCallback`, `initState`) that awaits, then registers
+  the controller with a global handler/service, with no disposed/`mounted` check after
+  the await → a disposed controller gets re-registered on fast navigation. **P2**.
 
 ### Perf / quality (maps U11; C)
 - Real work in `build()` (`NumberFormat(...)`, filtering, parsing, `getIt<Bloc>()..add()`)

@@ -161,6 +161,16 @@ skip any single file whose diff exceeds ~15k tokens, cap total material ~60k tok
    `.review-memory` recall (+ thread context on re-reviews). Skip generated files per the
    loaded pack's "Generated / skip" list.
 
+5b. **Verify findings before posting** — follow `review-core/references/verify-findings.md`.
+   **Re-locate** every raw finding with
+   `~/.claude/skills/review-core/scripts/relocate-findings.py` (`--ref` = head,
+   `--base` = merge-base; stack tip and its merge-base in stack mode), *then* merge &
+   dedupe on the corrected lines, *then* spawn one **`review-filter`** agent
+   (`model: 'haiku'`) on the canonical findings. It drops only findings the code proves
+   wrong and never a P0/P1. Post the survivors; list the dropped ones in the overview
+   under **Filtered by fact-check** with their evidence. Skip the filter for findings
+   carried over from earlier rounds.
+
 6. **Each reviewer leaves inline comments** in this format:
    ```
    [Reviewer X – Category] file : line N
@@ -211,7 +221,9 @@ skip any single file whose diff exceeds ~15k tokens, cap total material ~60k tok
    `binary` in `.gitattributes` (`.arb` localization files commonly are — they produce no
    hunks), and generated files the caps skipped. Compute anchorability up front by
    parsing `…/merge_requests/$IID/diffs` hunk headers rather than discovering it per
-   POST. On a real 2-MR stack this split was 16 inline / 12 MR-level.
+   POST — `relocate-findings.py` (step 5b) already did: its `anchor` field is `added`
+   (post `new_line`), `context` (post `new_line` + the script's `old_line`) or `outside`/`no_diff`
+   (MR-level note). On a real 2-MR stack this split was 16 inline / 12 MR-level.
 
    **Post the anchored note before deleting any note it replaces**, so a failure cannot
    drop a finding.
@@ -223,7 +235,8 @@ skip any single file whose diff exceeds ~15k tokens, cap total material ~60k tok
    follow-up comments** · **⚠️ Still Open from previous rounds** · **🆕 New P0** ·
    **🆕 New P1** · **🆕 New P2** · **Build & CI** (Reviewer D: compiles, CI gates run,
    pipeline status) · **Seams** (Reviewer E: reachability / lifecycle / sibling-parity
-   gaps) · **Skipped files** (anything the caps dropped — a known gap, name it) ·
+   gaps) · **Filtered by fact-check** (step 5b drops: title, `file:line`, ground,
+   evidence — omit when empty) · **Skipped files** (anything the caps dropped — a known gap, name it) ·
    **Complex Logic Flagged** · **Verdict**
    (`✅ Approve` / `⚠️ Approve with minor fixes` / `🔄 Request Changes`). Merge conflict
    OR broken build/CI **OR an unverified build** OR any P0/P1 → Request Changes. An

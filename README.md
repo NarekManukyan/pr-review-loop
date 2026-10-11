@@ -96,9 +96,9 @@ unzip pr-review-loop.zip && ./pr-review-loop/install.sh
 Every review, whichever command triggers it, runs the same pipeline:
 
 ```
-trigger ─▶ recall memory ─▶ 5-agent panel ─▶ report ─▶ deliver ─▶ record memory
-             ▲                                                        │
-             └───────────────── next round ◀──────────────────────────┘
+trigger ─▶ recall memory ─▶ 5-agent panel ─▶ verify ─▶ report ─▶ deliver ─▶ record memory
+             ▲                                                                   │
+             └──────────────────────── next round ◀──────────────────────────────┘
 ```
 
 1. **Recall memory** — before reviewing, the panel loads this repo's past outcomes
@@ -132,6 +132,12 @@ trigger ─▶ recall memory ─▶ 5-agent panel ─▶ report ─▶ deliver �
    - **E – seams & blast radius** (the code *outside* the diff: is the new thing wired,
      drained like its siblings, consistent with its neighbours, and what does the
      downstream consumer dedup on?)
+3b. **Verify** — before anything is delivered, every finding is **re-located** by its
+   verbatim snippet (`relocate-findings.py`: deterministic, corrects drifted line numbers
+   and decides inline vs MR-level anchoring up front), then the merged set gets one
+   **fact-check** pass (`review-filter` agent on haiku) that may drop only findings the
+   code at HEAD proves wrong — never a P0/P1 — and lists every drop in the overview.
+   Both stages are adapted from Alibaba's OpenCodeReview.
 4. **Report** — findings are merged and de-duplicated (overlapping reviewers become
    one thread with "+1" replies), tagged P0/P1/P2, with a copy-paste fix prompt.
 5. **Deliver** — inline comments, an overview, a fix prompt and the platform's own
@@ -373,6 +379,10 @@ claude plugin update pr-review-loop        # then restart Claude Code
 ```
 pr-review-loop/
 ├── .claude-plugin/{plugin,marketplace}.json   # manifests (repo is its own marketplace)
+├── agents/
+│   ├── review-panel.md           # reviewer seat A/B/C/E/F (Read/Grep/Glob/Bash only)
+│   ├── review-build.md           # Reviewer D — build & CI parity (haiku)
+│   └── review-filter.md          # fact-check pass before delivery (haiku)
 ├── commands/
 │   ├── review-pr.md              # /review-pr
 │   ├── review-pr-watch.md        # /review-pr-watch
@@ -380,10 +390,12 @@ pr-review-loop/
 │   ├── review-pr-init.md         # /review-pr-init (guided setup)
 │   └── review-pr-doctor.md       # /review-pr-doctor
 ├── payload/skills/               # synced to ~/.claude/skills on install/first-run
-│   ├── review-core/              # engine: personas, universal lenses, stack packs, resolver
+│   ├── review-core/              # engine: personas, lenses, resolver, verify-findings + relocate-findings.py
 │   └── review-memory/            # learning engine (recall/record/note/distill/health/config/doctor)
 ├── hooks/ensure-and-nudge.sh     # SessionStart: sync skills, install graphify, distill nudge
 ├── scripts/ensure-graphify.sh    # best-effort graphify installer
+├── scripts/attribute-findings.sh # stack mode: finding → introducing MR
+├── tests/                        # stdlib unittest (memory recall, relocate-findings)
 ├── install.sh                    # standalone (no-marketplace) installer
 ├── CHANGELOG.md
 └── README.md

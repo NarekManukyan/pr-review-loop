@@ -12,7 +12,10 @@ loaded lens pack list, the repo `CLAUDE.md` + ADRs, `.review-memory` recall, and
 re-reviews) `thread-context.md`.
 
 Finding shape (JSON): `{mr,file,line,severity:P0|P1|P2,reviewer,category,title,body,snippet}`
-plus one `{mr,reviewer,summary}` per MR. On re-reviews add reply resolutions
+— `snippet` is **1–3 lines copied verbatim from the file at HEAD**, including the line
+the finding is about. It is required: `relocate-findings.py` uses it to correct `line`,
+and a snippet that is not in the file is the first signal the finding is wrong
+(`verify-findings.md`). Never paraphrase it or quote the base side. Plus one `{mr,reviewer,summary}` per MR. On re-reviews add reply resolutions
 `{mr,reviewer,reply_to,resolution:resolved|deferred|disputed|clarified,response}`.
 
 **Reporting: find broadly, deliver proportionately.** Keep looking for everything you can

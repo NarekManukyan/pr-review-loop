@@ -5,6 +5,39 @@ All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 
 ## Unreleased
 
+Added
+- **Findings are verified before delivery** (`review-core/references/verify-findings.md`).
+  Both stages are adapted from OpenCodeReview (Alibaba's review CLI), which runs them as
+  dedicated modules after its review agent.
+  - **Re-locate** — `review-core/scripts/relocate-findings.py` trusts the verbatim
+    `snippet` over the reported `line`: consecutive multi-line match, then the most
+    distinctive line as a substring, then fuzzy; nearest candidate to the reported line
+    wins, and a generic snippet (`}`) may confirm a line but never move it. It also
+    classifies each corrected line against the diff hunks (`anchor`: added / context /
+    outside), replacing per-POST anchorability discovery. Runs before merge & dedupe so
+    duplicates align. Zero tokens. 15 tests in `tests/test_relocate.py`.
+    Trial on mobile_app #238: OCR-delegate's 14 findings re-located against the
+    round-2 head (code shifted by the fix commit) — 10 lines corrected, 1 fuzzy match
+    after a rename, 3 `not_found`, each one code the developer had actually removed.
+    14/14 correct.
+  - **Fact-check** — new `review-filter` agent (haiku) on the canonical findings. Drops
+    only what the code at HEAD proves wrong (Ground A: construct not in the file;
+    Ground B: a line literally contradicts the claim), with quoted `file:line` evidence.
+    Never drops P0/P1; P2s in protected categories (resource safety, concurrency,
+    security, behaviour change, build) only on Ground A with a `not_found` snippet.
+    Trial on #238 (haiku, 31 findings = 14 panel + 14 OCR + 3 planted wrong): all 28
+    real findings kept, 2 planted wrong ones dropped with correct evidence; the third
+    (a "never disposed" AnimationController that does not exist) was kept under the
+    first draft's blanket protection, which is why Ground A now applies to protected
+    P2s; re-run, it is dropped with quoted evidence while the real protected P2s next to
+    it stay. Cost: ~60k haiku tokens / 87 s for 31 findings. Drops are listed in the overview under **Filtered by fact-check**, never
+    deleted silently.
+- `personas.md`: `snippet` is now required and must be verbatim from HEAD.
+- `_base-flutter` lens: transparent tap-target boxes under `deferToChild` wrappers
+  (incl. `ScaleTap`) do not enlarge the hit area; opaque error views swallowing the
+  overlay's reveal tap; async init re-registering a disposed controller. All three were
+  found by OCR on mobile_app #238 and missed by the panel; the first shipped.
+
 Removed
 - **`/review-pr-slack` and `/review-pr-slack-watch`** — the HTML-report + Slack-verdict
   front-end, its reviewer-prompt scaffolding and report builder, and the bundled
