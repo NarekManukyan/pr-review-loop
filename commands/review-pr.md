@@ -316,6 +316,28 @@ mode in the resolver line (`… · seats: packet|fork`).
    unverified`, plus D's P1 finding). "Couldn't verify" is never "passes". Already-merged
    PRs are the one exception: `null` there just means the check was skipped.
 
+   **Map the verdict to a real review event — submit the platform's own
+   approval/blocking state via the review call (empty `body`), not just verdict text in
+   the overview:**
+   - `🔄 Request Changes` → `event: REQUEST_CHANGES` (GitHub) / `unapprove` + the note
+     (GitLab). Any P0/P1, merge conflict, or broken/unverified build lands here.
+   - `✅ Approve` (clean — no open findings that need a fix) → `event: APPROVE` (GitHub
+     `POST .../pulls/N/reviews {"event":"APPROVE"}`) / `glab mr approve` (GitLab).
+     **A clean Approve MUST submit the actual APPROVE event** so the PR's `reviewDecision`
+     flips to `APPROVED` and the green check shows — a verdict word in the overview is not
+     an approval. On a re-review this APPROVE supersedes an earlier `CHANGES_REQUESTED`
+     from the same account; verify with `gh pr view N --json reviewDecision`.
+   - `⚠️ Approve with minor fixes` → `event: COMMENT` (GitHub) / note only, **do NOT
+     approve** (GitLab). This verdict means fixes are still outstanding (P2s, optional
+     nits), so it must NOT submit a formal APPROVE — leave the platform's approval state
+     unset and let the author address the minor items.
+   - **"if available" fallback (clean Approve only):** the APPROVE event can be
+     unavailable — you authored the PR (GitHub forbids self-approval → the POST 422s), the
+     token lacks the scope, or a branch rule blocks it. Then fall back to `event: COMMENT`,
+     state the verdict in the overview, and add one line in **Verdict** naming why the
+     formal approval could not be submitted (e.g. "self-approval not allowed"). Never
+     silently drop a clean Approve to a bare comment without saying so.
+
    **In stack mode** (step 3) there is **one overview and one verdict for the whole
    stack**, posted on the tip PR. Add a **Stack** section: the chain map, the merge policy
    the user chose, and the per-MR finding counts from `attribute-findings.sh` (plus any

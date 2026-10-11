@@ -3,7 +3,15 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
-## Unreleased
+## 1.19.0
+
+Added
+- **`/review-pr` submits the platform's own review state, not only verdict text.**
+  `🔄 Request Changes` → `REQUEST_CHANGES` (GitHub) / `unapprove` (GitLab); a clean
+  `✅ Approve` → a real `APPROVE` / `glab mr approve`, so `reviewDecision` flips;
+  `⚠️ Approve with minor fixes` → a comment only, never a formal approval. When the
+  approval cannot be submitted (self-authored PR, token scope, branch rule) the overview
+  says why instead of silently downgrading.
 
 Added — review-board mod (optional, second plugin in this marketplace)
 - `mods/review-board`: a live pane for `/review-pr` (seats, tool calls, findings, build
