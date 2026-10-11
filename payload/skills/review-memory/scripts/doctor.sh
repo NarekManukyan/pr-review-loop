@@ -24,7 +24,7 @@ fi
 
 echo
 echo "skills (~/.claude/skills):"
-for s in review-core review-memory review-pr-slack slack-send; do
+for s in review-core review-memory; do
   if [ -d "$HOME/.claude/skills/$s" ]; then pass "$s installed"; else warn "$s missing (re-run install.sh, or restart to let the SessionStart hook sync it)"; fi
 done
 MEM="$HOME/.claude/skills/review-memory/scripts/memory.py"
@@ -32,25 +32,21 @@ if [ -f "$MEM" ] && python3 "$MEM" stats . >/dev/null 2>&1; then pass "memory.py
 
 echo
 echo "commands (~/.claude/commands):"
-for c in review-pr review-pr-watch review-pr-slack-watch review-pr-stats; do
+for c in review-pr review-pr-watch review-pr-stats; do
   [ -f "$HOME/.claude/commands/$c.md" ] && pass "/$c" || warn "/$c not in ~/.claude/commands (marketplace installs discover it from the plugin instead)"
 done
 
-echo
-echo "slack (only needed for /review-pr-slack + the Slack watcher):"
-if [ -n "${SLACK_UPLOAD_TOKEN:-}" ] || [ -f "$HOME/.slack-upload-token" ]; then
-  pass "sender token present"
-else
-  warn "no Slack token — run ~/.claude/skills/slack-send/install.sh (skip if you only use /review-pr)"
+if [ -d "$HOME/.claude/skills/review-pr-slack" ] || [ -f "$HOME/.claude/commands/review-pr-slack-watch.md" ]; then
+  echo
+  echo "retired (removed from the plugin; safe to delete):"
 fi
+[ -d "$HOME/.claude/skills/review-pr-slack" ] && \
+  warn "skill review-pr-slack — delete ~/.claude/skills/review-pr-slack"
+[ -f "$HOME/.claude/commands/review-pr-slack-watch.md" ] && \
+  warn "command /review-pr-slack-watch — delete ~/.claude/commands/review-pr-slack-watch.md"
 
 echo
 echo "optional:"
-if have node && have npm; then
-  if [ -d "$HOME/.claude/skills/review-pr-slack/scripts/node_modules/shiki" ]; then pass "shiki installed (HTML report highlighting baked in)"; else warn "shiki not installed — report falls back to CDN highlighting (not visible in Slack preview). Fix: (cd ~/.claude/skills/review-pr-slack/scripts && npm install)"; fi
-else
-  warn "node/npm not found — HTML report uses CDN highlighting (browser-only)"
-fi
 if have graphify; then pass "graphify present (semantic review-memory recall)"; else warn "graphify not installed — deterministic JSONL recall still works. Add later: pipx install graphifyy"; fi
 
 echo

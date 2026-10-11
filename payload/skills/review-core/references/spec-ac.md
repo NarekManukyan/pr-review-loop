@@ -80,9 +80,9 @@ Output per AC: `{mr, ac_id, ac_text, verdict, covered_ref, gap_ref, severity, no
 one `{mr, reviewer:"F", summary}` roll-up. `partial`/`not-done` verdicts also become
 normal findings (so they land in the report + fix prompt).
 
-## Wiring notes for front-ends
+## Wiring notes for the front-end
 
-- `review-pr-slack` and `/review-pr` both spawn F **in parallel** with A/B/C/E when a
+- `/review-pr` spawns F **in parallel** with A/B/C/E when a
   ticket key is present. When no key and no MR-description ACs exist, skip F silently
   (one line in the overview: "AC pass skipped — no ticket").
 - F's `partial`/`not-done` findings feed the same dedupe/report path as the others and

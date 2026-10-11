@@ -1,6 +1,6 @@
 # Stack-level review — reviewing a chain as one unit
 
-Both front-ends load this. It covers **detecting** a stacked chain, **asking the merge
+`/review-pr` loads this. It covers **detecting** a stacked chain, **asking the merge
 policy**, **reviewing the cumulative diff**, **attributing findings back to the MR that
 introduced them**, and **the single verdict**.
 

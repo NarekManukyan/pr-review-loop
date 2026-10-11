@@ -1,17 +1,14 @@
 ---
 name: review-core
-description: Shared, stack-aware review engine for pr-review-loop. Not invoked directly by users — the /review-pr command and the review-pr-slack skill both load it to get the reviewer personas (A/B/C + Reviewer D build/CI), the universal stack-agnostic lenses, and the pluggable per-stack lens packs selected by a resolver. Detects the repo's stack + libraries (Flutter BLoC/MobX/Riverpod/Provider, Go/Postgres, NestJS, …), loads the matching lens packs on top of universal principles and the repo's own CLAUDE.md/ADRs/linter/review-memory, and falls back to universal-only for unknown stacks. Read this when running any pr-review-loop review, or when adding/editing a stack lens pack.
+description: Stack-aware review engine for pr-review-loop. Not invoked directly by users — the /review-pr command loads it to get the reviewer personas (A/B/C + Reviewer D build/CI), the universal stack-agnostic lenses, and the pluggable per-stack lens packs selected by a resolver. Detects the repo's stack + libraries (Flutter BLoC/MobX/Riverpod/Provider, Go/Postgres, NestJS, …), loads the matching lens packs on top of universal principles and the repo's own CLAUDE.md/ADRs/linter/review-memory, and falls back to universal-only for unknown stacks. Read this when running any pr-review-loop review, or when adding/editing a stack lens pack.
 version: 1.0.0
 ---
 
 # Review engine (review-core)
 
 The single source of truth for **how** pr-review-loop reviews — personas + lenses.
-The delivery front-ends decide **where** findings go:
+The delivery front-end decides **where** findings go:
 - `/review-pr` (command) → inline GitLab/GitHub comments + overview + fix prompt.
-- `review-pr-slack` (skill) → HTML report + Slack verdict, never posts on the platform.
-
-Both call this engine so review quality is identical and defined once.
 
 ## What the engine provides
 
@@ -45,7 +42,7 @@ Both call this engine so review quality is identical and defined once.
    reporting only FACTS (exact code) with P0/P1/P2 severities.
 4. **Deliver** — the front-end formats/dedupes/posts (see its own SKILL/command).
 
-## Non-negotiables (inherited by both front-ends)
+## Non-negotiables (inherited by the front-end)
 - **Delivery is capped, detection is not** (`personas.md` § Reporting). P0/P1 always get
   their own thread; P2s go in the overview digest by default, at most 10 P2 threads per
   round and 25 inline threads total. Over the cap, digest the remainder. A review the
