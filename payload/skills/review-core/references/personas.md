@@ -12,7 +12,10 @@ loaded lens pack list, the repo `CLAUDE.md` + ADRs, `.review-memory` recall, and
 re-reviews) `thread-context.md`.
 
 Finding shape (JSON): `{mr,file,line,severity:P0|P1|P2,reviewer,category,title,body,snippet}`
-plus one `{mr,reviewer,summary}` per MR. On re-reviews add reply resolutions
+— `snippet` is **1–3 lines copied verbatim from the file at HEAD**, including the line
+the finding is about. It is required: `relocate-findings.py` uses it to correct `line`,
+and a snippet that is not in the file is the first signal the finding is wrong
+(`verify-findings.md`). Never paraphrase it or quote the base side. Plus one `{mr,reviewer,summary}` per MR. On re-reviews add reply resolutions
 `{mr,reviewer,reply_to,resolution:resolved|deferred|disputed|clarified,response}`.
 
 **Reporting: find broadly, deliver proportionately.** Keep looking for everything you can
@@ -46,8 +49,11 @@ own: the defects that bite live *outside* the diff (on `booking-back!31` three o
 misses were in files never in it). **For the checks below the read is MANDATORY, not
 optional.** A finding you could have proven by opening one file is a miss.
 
-Do **not** skip a required read to save tokens — that is not where cost lives (content is
-cached and paid once; the cost is tool schemas, which is why you run on a minimal toolset).
+Do **not** skip a required read to save tokens — skip the *extra turns* instead. Cost is
+turns × context: every turn re-sends everything you have read so far, so ten one-file
+turns cost several times one ten-file turn. The front-end's packet already holds the
+changed files, the rules and a likely-reads list; put every further read you need into
+**one turn of parallel tool calls**, at most two such turns.
 
 | When | You MUST read |
 |---|---|

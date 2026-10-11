@@ -55,7 +55,8 @@ an editable default `.review-memory/config.json`.
    Exit 0 (`yes`) → already reviewed at this head, **skip**. Exit 1 (`no`) → needs
    a (re-)review.
 
-4. **For each PR that needs review, run `/review-pr <url>`** — the full panel
+4. **For each PR that needs review, run `/review-pr <url> [--fork]`** — pass `--fork`
+   through when this watch cycle was started with it. The full panel
    review (it detects the round from existing PR comments, recalls review memory,
    posts inline, records outcomes). It is the same command a human runs; the
    watcher just invokes it unattended.

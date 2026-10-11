@@ -44,7 +44,9 @@ merges, dedupes and delivers; your text is data, not a message to a human.
 
 ## Efficiency
 
-Batch independent reads into one turn where you can (it is ~3× faster and costs
-the same). Prefer `Grep` over reading a file just to find a symbol. Do not read
+Your prompt names a packet: Read **all** of its files in your first turn, as parallel
+Read calls. After that, batch every further read into one turn — at most two more such
+turns, 15 tool calls in total. Each turn re-sends your whole context, so one-read-per-turn
+is what made a seat cost 1–3M tokens; the same reads batched cost a fraction of that. Prefer `Grep` over reading a file just to find a symbol. Do not read
 generated files — the loaded lens pack's "Generated / skip" section lists them,
 and they are never reviewed.

@@ -1,6 +1,6 @@
 ---
 description: Assemble a stack-aware reviewer panel (Architecture · Correctness · Perf/Quality · Build&Analyze) and post a structured PR review with inline comments, an overview, and a fix prompt
-argument-hint: <PR_URL>
+argument-hint: <PR_URL> [--fork]
 ---
 
 You are orchestrating a code-review panel. The **review brain lives in the shared
@@ -17,12 +17,34 @@ siblings, consistent with its neighbours?)**, defined in
 `review-core/references/personas.md`. Their focus, the universal lenses (U1–U14), and
 the per-stack idioms are all supplied by the engine.
 
-**Material contract.** Give the panel the diff **and** the full source of the changed
-files, and require the reads in `personas.md` § "Reading the code" (whole file for a
-design-system sweep, whole function for a complexity metric, the sibling for U13, the
-composition root for U5/U14). Findings are not limited to changed files. Apply the caps:
-skip any single file whose diff exceeds ~15k tokens, cap total material ~60k tokens, and
-**name every file you skipped** — a skipped file is a known gap, not a covered one.
+**Material contract — packets, not fetching.** The panel's material is built in code
+before any seat starts (`build-packets.py`, step 5): every changed file with head-side
+line numbers (whole file while the budget lasts, otherwise its changed regions), the repo
+rules, the likely reads outside the diff, and each seat's own persona + lens slice. Seats
+still owe the reads in `personas.md` § "Reading the code" — the packet covers most of
+them, and the rest are batched into one or two turns. Findings are not limited to changed
+files. Generated files are skipped and listed; any file shown only as changed regions is
+listed in the packet manifest — **name those in the overview**, a partly-read file is a
+known gap.
+
+Why: measured on two real PRs, each seat spent 17–51 turns fetching material one tool
+call per turn, re-sending a context that grew from 12k to 80–130k every turn. Cost is
+turns × context, so the fetching — not the reasoning — was ~90% of the tokens. With
+packets a seat takes 4–9 turns; tokens per review fell by more than half (9.6M → 4.0–4.5M
+on the same two PRs) at the same quality.
+
+---
+
+**Flags** (anywhere in `$ARGUMENTS`; the PR URL is the argument that is not a flag):
+
+| Flag | Seat mode | When |
+|---|---|---|
+| *(none)* | **packet** — each seat is a `review-panel` agent that reads the packet itself | default: the best results per run in the benchmark |
+| `--fork` | **fork** — you read the packet once, seats are forks of you | ~40% cheaper and faster; slightly lower recall in the benchmark (6 vs 8–9 of 14 bugs over 2 PRs) — use it for routine PRs, re-reviews and two-pass runs |
+
+A repo can make fork its default with `"seat_mode": "fork"` in
+`.review-memory/config.json`; `--packet` forces the default back for one run. Print the
+mode in the resolver line (`… · seats: packet|fork`).
 
 ---
 
@@ -148,18 +170,76 @@ skip any single file whose diff exceeds ~15k tokens, cap total material ~60k tok
    # GitLab: glab api -X PUT ".../discussions/<id>?resolved=true"
    ```
 
-5. **Run the panel.** Spawn Reviewers A/B/C **and E** (and **F** when 4e found a ticket
-   key or PR-description ACs — pass it the ACs) with `subagent_type: 'review-panel'`, and
-   **D** with `subagent_type: 'review-build'` (Build & CI parity — haiku, small context:
-   branch + CI config + file list, no diff body). F returns per-AC
+5. **Run the panel.**
+
+   **5a. Start the build gate (Reviewer D), in the shell's background** — it is a script
+   now, zero tokens, and it finishes while the seats work:
+   ```bash
+   nohup python3 ~/.claude/skills/review-core/scripts/build-gate.py --repo <checkout> \
+     --head <head_sha> --base <merge_base> --pr-url <PR_URL> \
+     --scratch <scratch-dir> --out <scratch>/build.json > <scratch>/build.log 2>&1 &
+   ```
+   It resolves the pinned toolchain, runs install → codegen → analyze → format (changed
+   files) → the tests related to the change, records the PR's own pipeline status, and
+   writes Reviewer D's build record plus findings. A repo pins its exact gates with
+   `"build_gate": [{"name","cmd"}]` in `.review-memory/config.json`. Fall back to the
+   `review-build` agent (haiku) only when the record says no gates exist for the stack.
+
+   **5b. Build the packets:**
+   ```bash
+   python3 ~/.claude/skills/review-core/scripts/build-packets.py --repo <checkout> \
+     --base <merge_base> --head <head_sha> --out <scratch>/packets \
+     --pack <each lens file the resolver loaded, e.g. lenses/_base-flutter.md>
+   ```
+
+   **5c. Spawn the seats** — Reviewers A/B/C **and E** (and **F** when 4e found a ticket
+   key or PR-description ACs — pass it the ACs), as several Agent calls in ONE message.
+   How depends on the seat mode (see **Flags**).
+
+   **Packet mode (default)** — spawn each seat with `subagent_type: 'review-panel'`; it
+   reads the packet itself. The prompt is short — the packet carries the material:
+   > You are Reviewer `<X>`. In your first turn, Read every `<scratch>/packets/common-*.md`
+   > file and `<scratch>/packets/seat-<X>.md` — all in that one turn, as parallel Read
+   > calls. Follow the packet's cost rule (≤ 2 more turns of batched reads, ≤ 15 tool
+   > calls). `.review-memory` recall: `<recall lines>`. Return findings JSON.
+
+   **Fork mode (`--fork`, or `seat_mode: fork`)** — needs the Agent tool to accept
+   `subagent_type: 'fork'` (Claude Code with `CLAUDE_CODE_FORK_SUBAGENT=1`). If it does
+   not, say so in one line and use packet mode — never fail the review over it. Read
+   every `<scratch>/packets/common-*.md` yourself, in one turn of parallel Reads, and read
+   nothing else before spawning. Then spawn each seat as a **fork**, prompt:
+   > You are Reviewer `<X>`. Read `<scratch>/packets/seat-<X>.md` — your persona and
+   > lenses. The review packet is already in your context. Cost rule: ≤ 2 more turns of
+   > batched reads, ≤ 15 tool calls. `.review-memory` recall: `<recall lines>`. Return
+   > findings JSON only.
+
+   A fork inherits your context, so the packet is written to the cache **once** and every
+   seat reads it at a fraction of the price; in packet mode each seat writes its own copy,
+   and cache writes cost ~25× a cache read. Measured on two PRs vs packet mode: −40% cost
+   ($11.48 → $6.96), −15% time, 22 vs 26 real issues and 6 vs 8 real bugs. Anything you
+   read after the packet and before the spawn, every fork pays for — so spawn right after.
+
+   Repo linter config and review-memory recall go in the prompt (they are short); the
+   universal lenses, stack packs, CLAUDE.md/AGENTS.md and ADR index are already in the
+   packet, in the same precedence order (repo rules outrank packs). F returns per-AC
    **done / partial / not-done** with a `file:line`; a `partial`/`not-done` AC is a P1
-   (ticket not delivered) and posts as a normal inline/overview finding. **Never spawn a reviewer as `general-purpose`** — it re-sends ~100 unused MCP
-   tool schemas every turn (~5,420 tok/turn measured, ~83% of a reviewer's per-turn
-   cost). The plugin's agents carry only `Read, Grep, Glob, Bash`, which is all a
-   reviewer uses. Into every persona prompt inject, in precedence order: the universal
-   lenses → the loaded stack `lenses/*.md` → repo CLAUDE.md+ADRs → repo linter config →
-   `.review-memory` recall (+ thread context on re-reviews). Skip generated files per the
-   loaded pack's "Generated / skip" list.
+   (ticket not delivered) and posts as a normal inline/overview finding. **Never spawn a
+   reviewer as `general-purpose`** — it re-sends ~100 unused MCP tool schemas every turn.
+   The plugin's agents carry only `Read, Grep, Glob, Bash`, which is all a reviewer uses.
+   When the seats return, read `<scratch>/build.json` (wait for it if the gate is still
+   running) and merge its findings and build record as Reviewer D's.
+
+5d. **Verify findings before posting** — follow `review-core/references/verify-findings.md`.
+   **Re-locate** every raw finding with
+   `~/.claude/skills/review-core/scripts/relocate-findings.py` (`--ref` = head,
+   `--base` = merge-base; stack tip and its merge-base in stack mode), *then* merge &
+   dedupe on the corrected lines, *then* — **only if any canonical finding came back
+   `not_found`, `fuzzy` or `no_snippet`** — spawn one **`review-filter`** agent
+   (`model: 'haiku'`) on just those findings. Snippets that matched the code exactly are
+   already grounded; on a benchmark of two PRs the filter dropped nothing from them. It
+   drops only findings the code proves wrong and never a P0/P1. Post the survivors; list the dropped ones in the overview
+   under **Filtered by fact-check** with their evidence. Skip the filter for findings
+   carried over from earlier rounds.
 
 6. **Each reviewer leaves inline comments** in this format:
    ```
@@ -211,7 +291,9 @@ skip any single file whose diff exceeds ~15k tokens, cap total material ~60k tok
    `binary` in `.gitattributes` (`.arb` localization files commonly are — they produce no
    hunks), and generated files the caps skipped. Compute anchorability up front by
    parsing `…/merge_requests/$IID/diffs` hunk headers rather than discovering it per
-   POST. On a real 2-MR stack this split was 16 inline / 12 MR-level.
+   POST — `relocate-findings.py` (step 5d) already did: its `anchor` field is `added`
+   (post `new_line`), `context` (post `new_line` + the script's `old_line`) or `outside`/`no_diff`
+   (MR-level note). On a real 2-MR stack this split was 16 inline / 12 MR-level.
 
    **Post the anchored note before deleting any note it replaces**, so a failure cannot
    drop a finding.
@@ -223,7 +305,8 @@ skip any single file whose diff exceeds ~15k tokens, cap total material ~60k tok
    follow-up comments** · **⚠️ Still Open from previous rounds** · **🆕 New P0** ·
    **🆕 New P1** · **🆕 New P2** · **Build & CI** (Reviewer D: compiles, CI gates run,
    pipeline status) · **Seams** (Reviewer E: reachability / lifecycle / sibling-parity
-   gaps) · **Skipped files** (anything the caps dropped — a known gap, name it) ·
+   gaps) · **Filtered by fact-check** (step 5d drops: title, `file:line`, ground,
+   evidence — omit when empty) · **Skipped files** (anything the caps dropped — a known gap, name it) ·
    **Complex Logic Flagged** · **Verdict**
    (`✅ Approve` / `⚠️ Approve with minor fixes` / `🔄 Request Changes`). Merge conflict
    OR broken build/CI **OR an unverified build** OR any P0/P1 → Request Changes. An

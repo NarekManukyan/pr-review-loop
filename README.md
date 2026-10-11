@@ -96,9 +96,9 @@ unzip pr-review-loop.zip && ./pr-review-loop/install.sh
 Every review, whichever command triggers it, runs the same pipeline:
 
 ```
-trigger ─▶ recall memory ─▶ 5-agent panel ─▶ report ─▶ deliver ─▶ record memory
-             ▲                                                        │
-             └───────────────── next round ◀──────────────────────────┘
+trigger ─▶ recall memory ─▶ 5-agent panel ─▶ verify ─▶ report ─▶ deliver ─▶ record memory
+             ▲                                                                   │
+             └──────────────────────── next round ◀──────────────────────────────┘
 ```
 
 1. **Recall memory** — before reviewing, the panel loads this repo's past outcomes
@@ -132,6 +132,12 @@ trigger ─▶ recall memory ─▶ 5-agent panel ─▶ report ─▶ deliver �
    - **E – seams & blast radius** (the code *outside* the diff: is the new thing wired,
      drained like its siblings, consistent with its neighbours, and what does the
      downstream consumer dedup on?)
+3b. **Verify** — before anything is delivered, every finding is **re-located** by its
+   verbatim snippet (`relocate-findings.py`: deterministic, corrects drifted line numbers
+   and decides inline vs MR-level anchoring up front), then the merged set gets one
+   **fact-check** pass (`review-filter` agent on haiku) that may drop only findings the
+   code at HEAD proves wrong — never a P0/P1 — and lists every drop in the overview.
+   Both stages are adapted from Alibaba's OpenCodeReview.
 4. **Report** — findings are merged and de-duplicated (overlapping reviewers become
    one thread with "+1" replies), tagged P0/P1/P2, with a copy-paste fix prompt.
 5. **Deliver** — inline comments, an overview, a fix prompt and the platform's own
@@ -191,10 +197,24 @@ that's the whole point of the split. Packs shipped today: `go-postgres`, `flutte
 
 ## Commands
 
-### `/review-pr <PR_URL>`
+### `/review-pr <PR_URL> [--fork]`
 Full panel review of one PR, posting inline comments. Detects the review round from
 existing PR comments, recalls memory, records outcomes. This is the command a human
 runs manually and the one the PR watcher drives.
+
+**Seat modes.** Every seat gets a context packet built in code (changed files, rules,
+likely reads, its own lenses) instead of fetching material turn by turn.
+- **packet** (default): each seat reads the packet itself. On a two-PR benchmark it
+  matched the old panel's results with less than half the tokens and in about half the
+  time.
+- **`--fork`**: you read the packet once and the seats are forks of the orchestrator, so
+  the packet is cached once instead of four times. About 40% cheaper again, at slightly
+  lower recall in that benchmark. Good for routine PRs, re-reviews, or two cheap passes
+  on an important PR. Needs `CLAUDE_CODE_FORK_SUBAGENT=1`; without it the review says so
+  and runs in packet mode.
+
+Make fork a repo's default with `"seat_mode": "fork"` in `.review-memory/config.json`
+(`--packet` overrides it for one run).
 
 ### `/review-pr-stats`  ·  CLI: `review-stats`
 
@@ -234,6 +254,7 @@ Wrap the watch command in `/loop`:
 
 ```
 /loop 10m /review-pr-watch                       # inline, PRs you're requested on
+/loop 10m /review-pr-watch --fork                # same, cheaper fork-mode seats
 ```
 
 **How a next round is detected**
@@ -373,6 +394,10 @@ claude plugin update pr-review-loop        # then restart Claude Code
 ```
 pr-review-loop/
 ├── .claude-plugin/{plugin,marketplace}.json   # manifests (repo is its own marketplace)
+├── agents/
+│   ├── review-panel.md           # reviewer seat A/B/C/E/F (Read/Grep/Glob/Bash only)
+│   ├── review-build.md           # Reviewer D — build & CI parity (haiku)
+│   └── review-filter.md          # fact-check pass before delivery (haiku)
 ├── commands/
 │   ├── review-pr.md              # /review-pr
 │   ├── review-pr-watch.md        # /review-pr-watch
@@ -380,10 +405,12 @@ pr-review-loop/
 │   ├── review-pr-init.md         # /review-pr-init (guided setup)
 │   └── review-pr-doctor.md       # /review-pr-doctor
 ├── payload/skills/               # synced to ~/.claude/skills on install/first-run
-│   ├── review-core/              # engine: personas, universal lenses, stack packs, resolver
+│   ├── review-core/              # engine: personas, lenses, resolver, verify-findings + relocate-findings.py
 │   └── review-memory/            # learning engine (recall/record/note/distill/health/config/doctor)
 ├── hooks/ensure-and-nudge.sh     # SessionStart: sync skills, install graphify, distill nudge
 ├── scripts/ensure-graphify.sh    # best-effort graphify installer
+├── scripts/attribute-findings.sh # stack mode: finding → introducing MR
+├── tests/                        # stdlib unittest (memory recall, relocate-findings)
 ├── install.sh                    # standalone (no-marketplace) installer
 ├── CHANGELOG.md
 └── README.md

@@ -18,6 +18,8 @@ The delivery front-end decides **where** findings go:
 | `references/universal-lenses.md` | U1–U14: stack-agnostic review principles (the WHAT). Always applied. |
 | `references/personas.md` | Reviewers A/B/C + **D (Build & CI parity, runs on haiku)** + **E (Seams & Blast Radius: U5/U13/U14 + parallel-structure sweep)** + **F (Spec & AC completeness)**, the "Reading the code" contract (diff in, reads on demand), the **House conventions / owned-code** rule, and the **reporting cap** (P0/P1 threaded, P2s digested). |
 | `references/stack-mode.md` | **Stacked chains**: detect the chain, ask the merge policy (atomic vs piecemeal), review the cumulative diff at the tip as ONE unit, attribute findings back to the introducing MR, one verdict. Run after the resolver whenever >1 MR is in play. |
+| `references/verify-findings.md` | Between panel and delivery: **re-locate** findings by snippet (`scripts/relocate-findings.py`, deterministic, also classifies inline-anchorability) and **fact-check** them (`review-filter` agent, haiku — drops only proven-wrong findings, never P0/P1). |
+| `scripts/relocate-findings.py` | The re-locator. Stdlib Python; tests in the plugin's `tests/test_relocate.py`. |
 | `references/spec-ac.md` | Reviewer F procedure: repo→Jira routing, AC extraction, per-AC verdicts, MR-description fallback. |
 | `config/jira-routing.json` | Repo (GitLab group) → Jira site map used by the AC pass. Matches on site host, not hashed server IDs, so multiple Jira accounts coexist. |
 | `references/lenses/<stack>.md` | Per-stack idioms (the HOW). Loaded on demand by the resolver. |
@@ -40,6 +42,9 @@ The delivery front-end decides **where** findings go:
    The repo's own rules always outrank a generic pack.
 3. **Review** — each persona applies its owned universal lenses + the pack rules,
    reporting only FACTS (exact code) with P0/P1/P2 severities.
+3b. **Verify** — re-locate (before dedupe) and fact-check (after) per
+   `verify-findings.md`. Deterministic line correction first, then one cheap pass that
+   may drop only what the code proves wrong.
 4. **Deliver** — the front-end formats/dedupes/posts (see its own SKILL/command).
 
 ## Non-negotiables (inherited by the front-end)
