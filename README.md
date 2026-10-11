@@ -197,10 +197,24 @@ that's the whole point of the split. Packs shipped today: `go-postgres`, `flutte
 
 ## Commands
 
-### `/review-pr <PR_URL>`
+### `/review-pr <PR_URL> [--fork]`
 Full panel review of one PR, posting inline comments. Detects the review round from
 existing PR comments, recalls memory, records outcomes. This is the command a human
 runs manually and the one the PR watcher drives.
+
+**Seat modes.** Every seat gets a context packet built in code (changed files, rules,
+likely reads, its own lenses) instead of fetching material turn by turn.
+- **packet** (default): each seat reads the packet itself. On a two-PR benchmark it
+  matched the old panel's results with less than half the tokens and in about half the
+  time.
+- **`--fork`**: you read the packet once and the seats are forks of the orchestrator, so
+  the packet is cached once instead of four times. About 40% cheaper again, at slightly
+  lower recall in that benchmark. Good for routine PRs, re-reviews, or two cheap passes
+  on an important PR. Needs `CLAUDE_CODE_FORK_SUBAGENT=1`; without it the review says so
+  and runs in packet mode.
+
+Make fork a repo's default with `"seat_mode": "fork"` in `.review-memory/config.json`
+(`--packet` overrides it for one run).
 
 ### `/review-pr-stats`  ·  CLI: `review-stats`
 
@@ -240,6 +254,7 @@ Wrap the watch command in `/loop`:
 
 ```
 /loop 10m /review-pr-watch                       # inline, PRs you're requested on
+/loop 10m /review-pr-watch --fork                # same, cheaper fork-mode seats
 ```
 
 **How a next round is detected**

@@ -19,6 +19,13 @@ Changed — token cost (measured: ~10M tokens per PR, ~90% of it seats re-readin
   tokens; runs in the shell's background while the seats work. Repos pin gates with
   `build_gate` in `.review-memory/config.json`. On client_app #294 it matched the agent's
   result in 8.7 min.
+- **`/review-pr --fork`** (opt-in): the orchestrator reads the packet once and the seats
+  are forks of it, so the packet is cached once instead of once per seat — cache writes,
+  not reads, turned out to be the expensive tokens (~25× a read). Two-PR benchmark vs the
+  default packet mode: −40% cost ($11.48 → $6.96), −15% time, 22 vs 26 real issues and
+  6 vs 8 real bugs. `"seat_mode": "fork"` in `.review-memory/config.json` makes it a
+  repo's default; `--packet` overrides; without `CLAUDE_CODE_FORK_SUBAGENT=1` it falls
+  back to packet mode and says so. `/review-pr-watch --fork` passes it through.
 - **The fact-check filter only sees doubtful findings** (`relocation` not_found / fuzzy /
   no_snippet). It dropped nothing from exact-match findings across the benchmark while
   costing 20–51 turns per run.

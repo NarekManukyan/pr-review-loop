@@ -1,6 +1,6 @@
 ---
 description: Assemble a stack-aware reviewer panel (Architecture · Correctness · Perf/Quality · Build&Analyze) and post a structured PR review with inline comments, an overview, and a fix prompt
-argument-hint: <PR_URL>
+argument-hint: <PR_URL> [--fork]
 ---
 
 You are orchestrating a code-review panel. The **review brain lives in the shared
@@ -29,7 +29,22 @@ known gap.
 
 Why: measured on two real PRs, each seat spent 17–51 turns fetching material one tool
 call per turn, re-sending a context that grew from 12k to 80–130k every turn. Cost is
-turns × context, so the fetching — not the reasoning — was ~90% of the bill.
+turns × context, so the fetching — not the reasoning — was ~90% of the tokens. With
+packets a seat takes 4–9 turns; tokens per review fell by more than half (9.6M → 4.0–4.5M
+on the same two PRs) at the same quality.
+
+---
+
+**Flags** (anywhere in `$ARGUMENTS`; the PR URL is the argument that is not a flag):
+
+| Flag | Seat mode | When |
+|---|---|---|
+| *(none)* | **packet** — each seat is a `review-panel` agent that reads the packet itself | default: the best results per run in the benchmark |
+| `--fork` | **fork** — you read the packet once, seats are forks of you | ~40% cheaper and faster; slightly lower recall in the benchmark (6 vs 8–9 of 14 bugs over 2 PRs) — use it for routine PRs, re-reviews and two-pass runs |
+
+A repo can make fork its default with `"seat_mode": "fork"` in
+`.review-memory/config.json`; `--packet` forces the default back for one run. Print the
+mode in the resolver line (`… · seats: packet|fork`).
 
 ---
 
@@ -179,26 +194,30 @@ turns × context, so the fetching — not the reasoning — was ~90% of the bill
 
    **5c. Spawn the seats** — Reviewers A/B/C **and E** (and **F** when 4e found a ticket
    key or PR-description ACs — pass it the ACs), as several Agent calls in ONE message.
+   How depends on the seat mode (see **Flags**).
 
-   **Fork mode — use it whenever the Agent tool accepts `subagent_type: 'fork'`.** Read
-   every `<scratch>/packets/common-*.md` yourself, in one turn of parallel Reads, and
-   read nothing else before spawning. Then spawn each seat as a **fork**, prompt:
-   > You are Reviewer `<X>`. Read `<scratch>/packets/seat-<X>.md` — your persona and
-   > lenses. The review packet is already in your context. Cost rule: ≤ 2 more turns of
-   > batched reads, ≤ 15 tool calls. Return findings JSON only.
-
-   A fork inherits your context, so the packet is written to the cache **once** and every
-   seat reads it at a tenth of the price. Measured on two PRs: with each seat reading its
-   own copy, cache writes became ~60% of the bill ($2.9–4.1 per review); writes cost
-   ~25× a cache read. Anything you read after the packet and before the spawn, every fork
-   pays for — so spawn right after.
-
-   **Otherwise** spawn the seats with `subagent_type: 'review-panel'`; each one reads the
-   packet itself. Each seat's prompt is short — the packet carries the material:
+   **Packet mode (default)** — spawn each seat with `subagent_type: 'review-panel'`; it
+   reads the packet itself. The prompt is short — the packet carries the material:
    > You are Reviewer `<X>`. In your first turn, Read every `<scratch>/packets/common-*.md`
    > file and `<scratch>/packets/seat-<X>.md` — all in that one turn, as parallel Read
    > calls. Follow the packet's cost rule (≤ 2 more turns of batched reads, ≤ 15 tool
    > calls). `.review-memory` recall: `<recall lines>`. Return findings JSON.
+
+   **Fork mode (`--fork`, or `seat_mode: fork`)** — needs the Agent tool to accept
+   `subagent_type: 'fork'` (Claude Code with `CLAUDE_CODE_FORK_SUBAGENT=1`). If it does
+   not, say so in one line and use packet mode — never fail the review over it. Read
+   every `<scratch>/packets/common-*.md` yourself, in one turn of parallel Reads, and read
+   nothing else before spawning. Then spawn each seat as a **fork**, prompt:
+   > You are Reviewer `<X>`. Read `<scratch>/packets/seat-<X>.md` — your persona and
+   > lenses. The review packet is already in your context. Cost rule: ≤ 2 more turns of
+   > batched reads, ≤ 15 tool calls. `.review-memory` recall: `<recall lines>`. Return
+   > findings JSON only.
+
+   A fork inherits your context, so the packet is written to the cache **once** and every
+   seat reads it at a fraction of the price; in packet mode each seat writes its own copy,
+   and cache writes cost ~25× a cache read. Measured on two PRs vs packet mode: −40% cost
+   ($11.48 → $6.96), −15% time, 22 vs 26 real issues and 6 vs 8 real bugs. Anything you
+   read after the packet and before the spawn, every fork pays for — so spawn right after.
 
    Repo linter config and review-memory recall go in the prompt (they are short); the
    universal lenses, stack packs, CLAUDE.md/AGENTS.md and ADR index are already in the

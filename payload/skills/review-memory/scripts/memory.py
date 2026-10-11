@@ -61,6 +61,7 @@ CONFIG_DEFAULTS = {
     'cycle_cap': 3,                    # max PRs a watch cycle handles
     'generated_globs': [],             # extra generated-file globs to skip (beyond CLAUDE.md)
     'review_pr_command': '/review-pr', # command the PR watcher drives
+    'seat_mode': 'packet',             # 'packet' (default) or 'fork' — see /review-pr --fork
 }
 
 # Resolutions that mean "do not re-raise unless the code materially changed".
