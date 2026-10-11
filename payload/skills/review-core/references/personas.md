@@ -7,7 +7,7 @@ syntax — the pack supplies syntax. Only report FACTS provable by pointing at e
 code. Line numbers reference the NEW file version.
 
 Common context block to substitute into every persona prompt is in the delivery skill
-(`review-pr` command / `review-pr-slack`), which also passes: the resolved stack +
+(the `review-pr` command), which also passes: the resolved stack +
 loaded lens pack list, the repo `CLAUDE.md` + ADRs, `.review-memory` recall, and (on
 re-reviews) `thread-context.md`.
 
@@ -231,7 +231,7 @@ Per MR:
 4. **"Could not verify" is never "passes."** If the install or the analyzer cannot be
    made to run, report `"compiles": null` **and emit a P1 finding** that the build is
    unverified (state what failed and the exact command). An unverified build blocks
-   Approve exactly as a broken one does — the front-ends' verdict logic treats it as a
+   Approve exactly as a broken one does — the front-end's verdict logic treats it as a
    blocker.
 5. **Pipeline status:** if the platform exposes the head pipeline
    (`glab ci status` / `gh pr checks`), a RED required job is a P1 merge-blocker even
@@ -335,5 +335,5 @@ reported as missing.
 
 ---
 
-> Both front-ends run the full panel by referencing this file, so inline `/review-pr`
-> catches compile/CI (D) and seam defects (E) too, not just the Slack path.
+> `/review-pr` runs the full panel by referencing this file, so it catches compile/CI
+> (D) and seam defects (E) too.

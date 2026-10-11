@@ -59,12 +59,6 @@ CONFIG = 'config.json'
 CONFIG_DEFAULTS = {
     'stack': '',                       # e.g. flutter-bloc; '' -> auto-detect
     'cycle_cap': 3,                    # max PRs a watch cycle handles
-    'watch_channel': '',               # default Slack channel for the watcher
-    'reactions': {                     # Slack state emojis (short names, no colons)
-        'in_review': 'eyes',
-        'approved': 'white_check_mark',
-        'changes': 'wrench',
-    },
     'generated_globs': [],             # extra generated-file globs to skip (beyond CLAUDE.md)
     'review_pr_command': '/review-pr', # command the PR watcher drives
 }
@@ -142,8 +136,8 @@ def cmd_init(root, _args):
         ),
         'README.md': (
             "# .review-memory\n\n"
-            "Per-repo memory for the automated review skills (`/review-pr`,\n"
-            "`/review-pr-slack`, etc.). Committed to the repo so the whole team\n"
+            "Per-repo memory for the automated review commands (`/review-pr`,\n"
+            "`/review-pr-watch`). Committed to the repo so the whole team\n"
             "shares it and it is reviewed via PR.\n\n"
             "- `decisions.jsonl` — append-only log of past findings + developer\n"
             "  responses (resolved / deferred / disputed / clarified). Source of truth.\n"
@@ -627,7 +621,7 @@ def main():
         p.add_argument('root')
         if name == 'config':
             p.add_argument('--init', action='store_true', help='write a default config.json')
-            p.add_argument('--get', default='', help='print one key (dot-path, e.g. reactions.approved)')
+            p.add_argument('--get', default='', help='print one key (dot-path, e.g. cycle_cap)')
         if name in ('mark-reviewed', 'was-reviewed'):
             p.add_argument('--pr', required=True)
             p.add_argument('--commit', required=True)

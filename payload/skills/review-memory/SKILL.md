@@ -1,6 +1,6 @@
 ---
 name: review-memory
-description: This skill should be used by the code-review skills/commands (/review-pr, /review-pr-slack, /review-codequality, /review-functional-logic, /review-security-performance, /review-context-maintenance, code-review, review-changes) to recall past review outcomes before reviewing and record new outcomes after. Also invoke it directly ("distill review memory", "what has review memory learned for this repo") to review and promote recurring lessons. Maintains a per-repo `.review-memory/` corpus (committed) of findings + developer responses that calibrates future reviews without ever overriding CLAUDE.md / ADRs.
+description: This skill should be used by the code-review skills/commands (/review-pr, /review-codequality, /review-functional-logic, /review-security-performance, /review-context-maintenance, code-review, review-changes) to recall past review outcomes before reviewing and record new outcomes after. Also invoke it directly ("distill review memory", "what has review memory learned for this repo") to review and promote recurring lessons. Maintains a per-repo `.review-memory/` corpus (committed) of findings + developer responses that calibrates future reviews without ever overriding CLAUDE.md / ADRs.
 version: 1.0.0
 ---
 
@@ -79,7 +79,7 @@ Payload shape:
 
 - `dev_resolution` ∈ `open | resolved | deferred | disputed | clarified`. Round 1
   findings are usually `open`; on re-reviews, fill it from the developer's thread
-  replies (the /review-pr-slack "Thread follow-ups" resolutions map 1:1).
+  replies (the PR thread resolutions map 1:1).
 - **Do not pass `signature`.** It is auto-derived from `file + title + category`
   and is stable, so the same finding across rounds links automatically. Only pass
   one explicitly if you are deliberately merging two differently-titled findings.
@@ -114,7 +114,7 @@ python3 ~/.claude/skills/review-memory/scripts/memory.py close . \
 
 Review skills must treat recalled watch items as **must-inspect this round** and
 report on them, not skip them. When a human leaves a carry-forward comment in a
-PR/Slack thread ("this complex logic wasn't checked — verify next time"), record
+PR thread ("this complex logic wasn't checked — verify next time"), record
 it as a watch item, not a finding.
 
 ### Distill — periodic, human-gated

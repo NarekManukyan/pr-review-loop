@@ -57,11 +57,13 @@ for b in "$HOME"/.claude/skills/*.bak; do
   [ -d "$b" ] && [ -f "$b/SKILL.md" ] && rm -rf "$b"
 done
 
-# syntax highlighting for the HTML report (review-pr-slack)
-if command -v npm >/dev/null 2>&1; then
-  echo "Installing shiki (HTML report highlighting)…"
-  (cd "$HOME/.claude/skills/review-pr-slack/scripts" && npm install --no-fund --no-audit --silent) || \
-    echo "  (shiki install skipped — report falls back to CDN highlighting)"
+# Retired in this release: the Slack front-end. Remove what earlier installs left.
+rm -f "$HOME/.claude/commands/review-pr-slack-watch.md"
+if [ -d "$HOME/.claude/skills/review-pr-slack" ]; then
+  mkdir -p "$BACKUP_DIR"
+  rm -rf "$BACKUP_DIR/review-pr-slack"
+  mv "$HOME/.claude/skills/review-pr-slack" "$BACKUP_DIR/review-pr-slack"
+  echo "  - review-pr-slack retired (moved to $BACKUP_DIR)"
 fi
 
 echo "Ensuring graphify (optional semantic recall)…"
@@ -73,10 +75,8 @@ echo
 echo "Commands:"
 echo "  /review-pr <PR_URL>                     panel review + review memory (inline, this repo)"
 echo "  /review-pr-watch [owner/repo]           one watch cycle for re-review requests (wrap in /loop)"
-echo "  /review-pr-slack <PR_URLs | slack-msg>  panel review -> HTML report + Slack verdict"
-echo "  /review-pr-slack-watch #channel         one watch cycle (wrap in /loop to run continuously)"
-echo "  /review-pr-init                         guided setup (PR platform required; Slack/graphify optional)"
-echo "  /review-pr-doctor                       check setup (auth, skills, token, graphify, shiki)"
+echo "  /review-pr-init                         guided setup (PR platform required; graphify optional)"
+echo "  /review-pr-doctor                       check setup (auth, skills, graphify)"
 echo "  /review-pr-stats                        real token usage + review activity (from logs)"
 echo
 echo "CLI (any terminal, no Claude Code needed):"
@@ -85,10 +85,7 @@ echo "  review-stats --json                     machine-readable"
 echo
 echo "Prerequisites:"
 echo "  - gh CLI authenticated (or glab for GitLab)"
-echo "  - Slack: connect the sender token once ->  ~/.claude/skills/slack-send/install.sh"
-echo "    (needed for the Slack verdict message, report upload, and reaction state)"
 echo "  - graphify: auto-installed above if possible; JSONL recall works even without it"
 echo
-echo "Reactions encode PR state on the trigger message: 👀 reviewing · ✅ approved · 🔧 changes requested."
 echo "Review memory learns per repo from developer responses; recurring lessons get promoted"
 echo "by a human into CLAUDE.md/an ADR (run: memory.py distill .). Memory never overrides CLAUDE.md."

@@ -3,6 +3,22 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## Unreleased
+
+Removed
+- **`/review-pr-slack` and `/review-pr-slack-watch`** — the HTML-report + Slack-verdict
+  front-end, its reviewer-prompt scaffolding and report builder, and the bundled
+  `slack-send` skill, which only that front-end used. `/review-pr` is now the only
+  delivery path; the `review-core` engine, review memory and `/review-pr-watch` are
+  unchanged.
+  - Setup no longer asks about Slack or installs `shiki`; the doctor drops the Slack
+    token and shiki checks and instead warns if a retired copy is still installed.
+  - `install.sh` moves an old `~/.claude/skills/review-pr-slack` to the backup dir and
+    deletes `~/.claude/commands/review-pr-slack-watch.md`. The SessionStart hook removes
+    `review-pr-slack` only when it carries this plugin's install stamp.
+  - An installed `~/.claude/skills/slack-send` is left alone — it works standalone.
+  - `config.json` drops `watch_channel` and `reactions`; existing keys are ignored.
+
 ## 1.18.0
 
 Fixed

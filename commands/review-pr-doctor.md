@@ -1,5 +1,5 @@
 ---
-description: Check that pr-review-loop is set up correctly — auth, skills, Slack token, graphify, shiki — and explain how to fix anything missing.
+description: Check that pr-review-loop is set up correctly — auth, skills, graphify — and explain how to fix anything missing.
 ---
 
 Run the setup self-check and interpret it for the user:
@@ -15,8 +15,8 @@ Then:
    - python3 missing → install Python 3.
    - no gh/glab → install and authenticate (`gh auth login` / `glab auth login`).
 3. For each **WARN**, say whether it matters for what the user actually does:
-   - Slack token only matters for `/review-pr-slack` and the Slack watcher.
-   - shiki only affects HTML report highlighting in Slack preview.
+   - a "retired skill/command" warning means an old Slack front-end copy is still
+     installed; delete the path it names.
    - graphify is optional (JSONL recall works without it).
    - missing skills/commands on a marketplace install usually resolve after a
      session restart (the SessionStart hook syncs them); on a standalone install,
