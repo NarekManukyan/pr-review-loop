@@ -3,7 +3,22 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
-## Unreleased
+## 1.19.0
+
+Added
+- **`/review-pr` submits the platform's own review state, not only verdict text.**
+  `🔄 Request Changes` → `REQUEST_CHANGES` (GitHub) / `unapprove` (GitLab); a clean
+  `✅ Approve` → a real `APPROVE` / `glab mr approve`, so `reviewDecision` flips;
+  `⚠️ Approve with minor fixes` → a comment only, never a formal approval. When the
+  approval cannot be submitted (self-authored PR, token scope, branch rule) the overview
+  says why instead of silently downgrading.
+
+Added — review-board mod (optional, second plugin in this marketplace)
+- `mods/review-board`: a live pane for `/review-pr` (seats, tool calls, findings, build
+  gate, cost) plus a status line and an end-of-run toast; a per-seat tool-call budget
+  enforced in code (packet reads exempt); refuses `general-purpose` review seats; and
+  `/review-board guard on` refuses every posting call for a dry run. Needs
+  `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` (early access). 4 tests via `claude plugin test`.
 
 Changed — token cost (measured: ~10M tokens per PR, ~90% of it seats re-reading context)
 - **Seats get a packet instead of fetching.** `review-core/scripts/build-packets.py` writes

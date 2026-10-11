@@ -248,6 +248,33 @@ rest. See [Loop / automation](#loop--automation).
 
 ---
 
+## Review board (optional mod)
+
+`mods/review-board` is a second plugin in this marketplace. It adds a live view of a
+review and puts limits in code where prompts weren't enough:
+
+- **Board.** A pane with each seat's progress (tool calls used, findings, time), the
+  build gate's result, the running cost and a findings total. A short version shows in
+  the status line, and a toast summarizes the run when it ends.
+- **Seat budget.** A seat's 16th tool call is refused with "return your findings now";
+  reads of its own packet don't count. In the benchmark seats ignored "batch your reads"
+  in the prompt; this makes the rule stick. `/review-board budget <n>` changes it.
+- **No general-purpose seats.** Spawning a review seat as `general-purpose` is refused.
+- **Posting guard.** `/review-board guard on` refuses every `gh`/`glab` call that
+  comments, reviews, approves or merges, and GitLab MCP writes: a dry run of
+  `/review-pr`. `guard off` lifts it.
+
+It works in the terminal (as a docked pane in the fullscreen layout, inline otherwise)
+and in the desktop app. Hooks-module mods are early access in Claude Code right now, so
+set `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` in the `env` block of `~/.claude/settings.json`,
+then:
+
+```
+/plugin install review-board --marketplace NarekManukyan/pr-review-loop
+```
+
+Tests: `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test mods/review-board`.
+
 ## Loop / automation
 
 Wrap the watch command in `/loop`:
@@ -410,7 +437,8 @@ pr-review-loop/
 ├── hooks/ensure-and-nudge.sh     # SessionStart: sync skills, install graphify, distill nudge
 ├── scripts/ensure-graphify.sh    # best-effort graphify installer
 ├── scripts/attribute-findings.sh # stack mode: finding → introducing MR
-├── tests/                        # stdlib unittest (memory recall, relocate-findings)
+├── tests/                        # stdlib unittest (memory recall, relocate, packets, build gate)
+├── mods/review-board/            # optional mod: live board + seat budget + posting guard
 ├── install.sh                    # standalone (no-marketplace) installer
 ├── CHANGELOG.md
 └── README.md
