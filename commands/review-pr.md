@@ -178,9 +178,23 @@ turns × context, so the fetching — not the reasoning — was ~90% of the bill
    ```
 
    **5c. Spawn the seats** — Reviewers A/B/C **and E** (and **F** when 4e found a ticket
-   key or PR-description ACs — pass it the ACs) with `subagent_type: 'review-panel'`, as
-   several Agent calls in ONE message. Each seat's prompt is short — the packet carries
-   the material:
+   key or PR-description ACs — pass it the ACs), as several Agent calls in ONE message.
+
+   **Fork mode — use it whenever the Agent tool accepts `subagent_type: 'fork'`.** Read
+   every `<scratch>/packets/common-*.md` yourself, in one turn of parallel Reads, and
+   read nothing else before spawning. Then spawn each seat as a **fork**, prompt:
+   > You are Reviewer `<X>`. Read `<scratch>/packets/seat-<X>.md` — your persona and
+   > lenses. The review packet is already in your context. Cost rule: ≤ 2 more turns of
+   > batched reads, ≤ 15 tool calls. Return findings JSON only.
+
+   A fork inherits your context, so the packet is written to the cache **once** and every
+   seat reads it at a tenth of the price. Measured on two PRs: with each seat reading its
+   own copy, cache writes became ~60% of the bill ($2.9–4.1 per review); writes cost
+   ~25× a cache read. Anything you read after the packet and before the spawn, every fork
+   pays for — so spawn right after.
+
+   **Otherwise** spawn the seats with `subagent_type: 'review-panel'`; each one reads the
+   packet itself. Each seat's prompt is short — the packet carries the material:
    > You are Reviewer `<X>`. In your first turn, Read every `<scratch>/packets/common-*.md`
    > file and `<scratch>/packets/seat-<X>.md` — all in that one turn, as parallel Read
    > calls. Follow the packet's cost rule (≤ 2 more turns of batched reads, ≤ 15 tool
