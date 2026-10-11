@@ -2,7 +2,7 @@
 
 Two checks run between the panel and delivery. The first is code, the second is a
 cheap model pass. Neither adds findings — they correct and prune what the panel
-produced. `/review-pr` runs them as step 5b.
+produced. `/review-pr` runs them as step 5d.
 
 | Stage | When | What | Cost |
 |---|---|---|---|
@@ -57,8 +57,11 @@ from hunk headers or the base side — worth fixing at the source.
 ## Stage 2 — fact-check
 
 Spawn **one** `review-filter` agent (`subagent_type: 'review-filter'`,
-`model: 'haiku'`) with `repo`, `head`, `base` and the merged canonical findings
-(`+1` replies excluded — they follow their canonical). It returns a verdict per
+`model: 'haiku'`) with `repo`, `head`, `base` and **only the canonical findings whose
+`relocation` is `not_found`, `fuzzy` or `no_snippet`** (`+1` replies excluded — they
+follow their canonical). A snippet that matched the code exactly is already grounded:
+across a 2-PR benchmark the filter dropped none of them, while costing 20–51 turns per
+run. No doubtful findings → skip stage 2 entirely. It returns a verdict per
 finding: `keep`, or `drop` with a ground (A: not in the file / B: a line
 contradicts it) and the quoted `file:line` that proves it.
 

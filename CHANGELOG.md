@@ -5,6 +5,26 @@ All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 
 ## Unreleased
 
+Changed — token cost (measured: ~10M tokens per PR, ~90% of it seats re-reading context)
+- **Seats get a packet instead of fetching.** `review-core/scripts/build-packets.py` writes
+  every changed file once — head-side line numbers, `+`/`-` markers, whole file while a
+  budget lasts, changed regions otherwise — plus the repo rules (a `CLAUDE.md` that mirrors
+  `AGENTS.md` is not repeated), an ADR index, likely reads outside the diff (other users of
+  new symbols, siblings, composition roots) and each seat's own persona + lens slice. Seats
+  read it in one turn and get a cost rule: at most two more turns of batched reads, 15 tool
+  calls. Before: 17–51 turns per seat, one tool call each, context growing 12k→130k.
+- **Reviewer D is a script.** `build-gate.py` resolves the pinned toolchain, runs
+  install → codegen (a melos `build` script when the repo has one) → analyze → format on
+  changed files → related tests, records the PR pipeline, and writes D's build record. Zero
+  tokens; runs in the shell's background while the seats work. Repos pin gates with
+  `build_gate` in `.review-memory/config.json`. On client_app #294 it matched the agent's
+  result in 8.7 min.
+- **The fact-check filter only sees doubtful findings** (`relocation` not_found / fuzzy /
+  no_snippet). It dropped nothing from exact-match findings across the benchmark while
+  costing 20–51 turns per run.
+- `personas.md` and the `review-panel` agent now say where the cost actually lives: extra
+  turns, not reads.
+
 Added
 - **Findings are verified before delivery** (`review-core/references/verify-findings.md`).
   Both stages are adapted from OpenCodeReview (Alibaba's review CLI), which runs them as
