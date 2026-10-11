@@ -5,6 +5,13 @@ All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 
 ## Unreleased
 
+Added — review-board mod (optional, second plugin in this marketplace)
+- `mods/review-board`: a live pane for `/review-pr` (seats, tool calls, findings, build
+  gate, cost) plus a status line and an end-of-run toast; a per-seat tool-call budget
+  enforced in code (packet reads exempt); refuses `general-purpose` review seats; and
+  `/review-board guard on` refuses every posting call for a dry run. Needs
+  `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` (early access). 4 tests via `claude plugin test`.
+
 Changed — token cost (measured: ~10M tokens per PR, ~90% of it seats re-reading context)
 - **Seats get a packet instead of fetching.** `review-core/scripts/build-packets.py` writes
   every changed file once — head-side line numbers, `+`/`-` markers, whole file while a

@@ -11,6 +11,12 @@
       "description": "/review-pr panel, /review-pr-watch loop, and per-repo review memory.",
       "source": "./",
       "category": "productivity"
+    },
+    {
+      "name": "review-board",
+      "description": "Opt-in mod for /review-pr: live board (seats, build gate, cost), per-seat tool-call budget, no general-purpose seats, and a dry-run posting guard.",
+      "source": "./mods/review-board",
+      "category": "productivity"
     }
   ]
 }

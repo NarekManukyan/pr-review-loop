@@ -1,0 +1,9 @@
+{
+  "name": "review-board",
+  "version": "0.1.0",
+  "description": "Live board and guardrails for pr-review-loop's /review-pr: per-seat progress, build gate, cost, tool-call budget, and a dry-run posting guard.",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "NarekManukyan"
+  }
+}
