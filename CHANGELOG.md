@@ -3,6 +3,16 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.19.1
+
+Fixed
+- **MobX lens no longer flags post-`await` mutations inside an `@action`.** `mobx_codegen`
+  emits an `AsyncAction` whose Zone carries the action context across every continuation
+  (success path, both `catch` forms, `finally`), verified by measurement. The old rule
+  asked for `runInAction` there and was the most common MobX false positive. This
+  correction lived only in a locally edited copy of `flutter-mobx.md`; it is now in the
+  plugin, so the skill sync can't revert it.
+
 ## 1.19.0
 
 Added
