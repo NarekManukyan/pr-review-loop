@@ -222,7 +222,10 @@ def sections(text, level="## "):
     return out
 
 
-def seat_text(seat, packs):
+REUSE_MARK = "[reuse]"   # a pack section tagged with this is dropped when --reuse off
+
+
+def seat_text(seat, packs, reuse=True):
     personas = read(os.path.join(REFS, "personas.md"))
     parts = [f"# Your seat: Reviewer {seat}\n"]
     for head, body in sections(personas):
@@ -244,11 +247,39 @@ def seat_text(seat, packs):
             if not m:
                 continue
             tags = set(re.findall(r"U\d+|\b[A-F]\b", m.group(1)))
+            if not reuse and REUSE_MARK in (head or ""):
+                continue
             if seat in tags or tags & owned:
                 picked.append(body)
         if picked:
             parts.append(f"\n## From the `{title}` stack pack\n" + "".join(picked))
     return "".join(parts)
+
+
+REUSE_CATALOG = "reuse-catalog.md"
+# a new class (private ones too), mixin, extension or top-level function
+NEW_SYMBOL_RE = re.compile(
+    r"^\+(?:\s*(?:abstract|sealed|final|base)\s+)*(?:class|mixin|extension)\s+_?[A-Za-z]"
+    r"|^\+[A-Za-z_][\w<>?, ]*\s+_?[a-z]\w*\([^;]*\)\s*(?:\{|=>|async)")
+
+
+def reuse_catalog(a, diff):
+    """Write the catalog of existing code (at the merge-base) for seat C.
+
+    Returns "on", "off" (flag) or "skipped" (the diff adds no class or function, so
+    there is nothing to compare — a merge-only re-check costs nothing)."""
+    if a.reuse == "off":
+        return "off"
+    adds = [l for l in diff.splitlines() if l.startswith("+") and not l.startswith("+++")]
+    if not any(NEW_SYMBOL_RE.search(l) for l in adds):
+        return "skipped"
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reuse-catalog.py")
+    out = subprocess.run(["python3", script, a.repo, a.base], capture_output=True, text=True).stdout
+    if not out.strip():
+        return "skipped"   # no catalog for this stack
+    with open(os.path.join(a.out, REUSE_CATALOG), "w") as f:
+        f.write(out)
+    return "on"
 
 
 def common_rules():
@@ -268,6 +299,8 @@ def main(argv=None):
     ap.add_argument("--out", required=True)
     ap.add_argument("--pack", action="append", default=[], help="stack lens file (repeatable)")
     ap.add_argument("--seats", default="A,B,C,E")
+    ap.add_argument("--reuse", choices=["on", "off"], default="on",
+                    help="reuse-before-build check: catalog of existing code for seat C")
     ap.add_argument("--budget-kb", type=int, default=160,
                     help="budget for upgrading files from changed regions to whole-file views")
     a = ap.parse_args(argv)
@@ -275,7 +308,7 @@ def main(argv=None):
     git(a.repo, "rev-parse", "--verify", f"{a.head}^{{commit}}", check=True)
     os.makedirs(a.out, exist_ok=True)
     for f in os.listdir(a.out):
-        if f.startswith(("common-", "seat-")) or f == "manifest.json":
+        if f.startswith(("common-", "seat-")) or f in ("manifest.json", REUSE_CATALOG):
             os.remove(os.path.join(a.out, f))
 
     globs = generated_globs(packs)
@@ -356,13 +389,19 @@ def main(argv=None):
             f.write(c)
         names.append(name)
     seats = [s.strip() for s in a.seats.split(",") if s.strip()]
+    reuse = reuse_catalog(a, diff) if "C" in seats else "off"
     for s in seats:
         with open(os.path.join(a.out, f"seat-{s}.md"), "w") as f:
-            f.write(seat_text(s, packs))
+            f.write(seat_text(s, packs, reuse=reuse == "on"))
+            if s == "C" and reuse == "on":
+                f.write(f"\n## Reuse catalog\nRead `{REUSE_CATALOG}` (next to this file) in your "
+                        "first turn, with the packet. Check every class and function the diff adds "
+                        "against it — see the pack's reuse lens.\n")
     total = sum(os.path.getsize(os.path.join(a.out, n)) for n in names)
     manifest = {"head": a.head, "base": a.base, "common": names,
                 "seats": {s: f"seat-{s}.md" for s in seats},
                 "common_kb": round(total / 1024), "approx_tokens": round(total / 3.6),
+                "reuse": reuse,
                 "reviewable": paths, "whole_files": len(whole_files),
                 "regions_only": not_inlined, "skipped": skipped}
     with open(os.path.join(a.out, "manifest.json"), "w") as f:

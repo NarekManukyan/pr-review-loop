@@ -1,6 +1,6 @@
 ---
 description: Assemble a stack-aware reviewer panel (Architecture · Correctness · Perf/Quality · Build&Analyze) and post a structured PR review with inline comments, an overview, and a fix prompt
-argument-hint: <PR_URL> [--fork]
+argument-hint: <PR_URL> [--fork] [--no-reuse]
 ---
 
 You are orchestrating a code-review panel. The **review brain lives in the shared
@@ -45,6 +45,15 @@ on the same two PRs) at the same quality.
 A repo can make fork its default with `"seat_mode": "fork"` in
 `.review-memory/config.json`; `--packet` forces the default back for one run. Print the
 mode in the resolver line (`… · seats: packet|fork`).
+
+| Flag | Reuse check | When |
+|---|---|---|
+| *(none)* | **on** — Reviewer C gets `reuse-catalog.md` (existing design-system widgets, core use cases/helpers, feature use-case names) and flags new code that copies them as **P1** | default. Costs one catalog read for seat C (~12k tokens on a large Flutter repo, measured); skipped automatically when the diff adds no class or function, so merge-only re-checks cost nothing |
+| `--no-reuse` | **off** — the reuse lens section is dropped from every seat | hotfixes, or a repo where copies are accepted |
+
+A repo can turn it off by default with `"reuse_check": false` in
+`.review-memory/config.json`; `--reuse` turns it back on for one run. Print it in the
+resolver line (`… · reuse: on|off|skipped`, the `reuse` value from the packet manifest).
 
 ---
 
@@ -189,7 +198,8 @@ mode in the resolver line (`… · seats: packet|fork`).
    ```bash
    python3 ~/.claude/skills/review-core/scripts/build-packets.py --repo <checkout> \
      --base <merge_base> --head <head_sha> --out <scratch>/packets \
-     --pack <each lens file the resolver loaded, e.g. lenses/_base-flutter.md>
+     --pack <each lens file the resolver loaded, e.g. lenses/_base-flutter.md> \
+     --reuse <on|off>          # off for --no-reuse or "reuse_check": false
    ```
 
    **5c. Spawn the seats** — Reviewers A/B/C **and E** (and **F** when 4e found a ticket

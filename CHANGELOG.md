@@ -3,6 +3,32 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.20.0
+
+Added
+- **Reuse check: a copy of existing code is a P1** (`--no-reuse` to turn it off, on by
+  default). Panels dropped copies as "style" or "refactor for elegance": on one Flutter
+  repo an 8-PR feature stack passed 6–16 review rounds each with no reuse finding, while
+  sibling PRs that got a human design pass had 29, and the stack needed a cleanup
+  refactor after merge.
+  - New `review-core/scripts/reuse-catalog.py` lists what the repo already has at the
+    merge-base: design-system widgets (`packages/*/lib`), app-wide widgets and core use
+    cases, helpers and extensions (`lib/core`), and every feature use-case name. Reads
+    git objects only, about 3 s on a 4k-file repo.
+  - `build-packets.py --reuse on|off` writes `reuse-catalog.md` into the packet for
+    Reviewer C, only when the diff adds a class (private ones too), mixin, extension or
+    top-level function. A merge-only re-check reports `reuse: skipped` and costs nothing;
+    otherwise the catalog is one extra read for seat C (~12k tokens on a large Flutter
+    repo, measured). The manifest records `reuse: on|off|skipped`.
+  - `_base-flutter.md` gets a "Reuse before build" lens (tagged `[reuse]`, dropped from
+    every seat when the check is off): what counts as a copy, copies inside the PR, why
+    using an existing design-system widget is never a "shared-code change", and what is
+    not a finding.
+  - `personas.md`: reuse copies are the exception to "duplication is a digest item"
+    (P1, own thread); Reviewer C owns the check.
+  - Per-repo default `"reuse_check": false` in `.review-memory/config.json` turns it off;
+    `--reuse` turns it back on for one run.
+
 ## 1.19.1
 
 Fixed

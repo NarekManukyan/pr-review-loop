@@ -62,6 +62,7 @@ CONFIG_DEFAULTS = {
     'generated_globs': [],             # extra generated-file globs to skip (beyond CLAUDE.md)
     'review_pr_command': '/review-pr', # command the PR watcher drives
     'seat_mode': 'packet',             # 'packet' (default) or 'fork' — see /review-pr --fork
+    'reuse_check': True,               # reuse-before-build check — see /review-pr --no-reuse
 }
 
 # Resolutions that mean "do not re-raise unless the code materially changed".
