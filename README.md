@@ -197,7 +197,7 @@ that's the whole point of the split. Packs shipped today: `go-postgres`, `flutte
 
 ## Commands
 
-### `/review-pr <PR_URL> [--fork]`
+### `/review-pr <PR_URL> [--fork] [--no-reuse]`
 Full panel review of one PR, posting inline comments. Detects the review round from
 existing PR comments, recalls memory, records outcomes. This is the command a human
 runs manually and the one the PR watcher drives.
@@ -215,6 +215,17 @@ likely reads, its own lenses) instead of fetching material turn by turn.
 
 Make fork a repo's default with `"seat_mode": "fork"` in `.review-memory/config.json`
 (`--packet` overrides it for one run).
+
+**Reuse check** (on by default). Reviewer C gets `reuse-catalog.md`, a list of what the
+repo already has at the merge-base (design-system widgets, app-wide widgets, core use
+cases, helpers and extensions, every feature use-case name), and flags new code that
+copies any of it, or code the PR writes twice, as **P1**. Panels otherwise drop copies
+as "style": on one Flutter repo an 8-PR feature stack passed 6–16 review rounds with no
+reuse finding and needed a cleanup refactor after merge. The catalog is built only when
+the diff adds a class or function, so merge-only re-checks cost nothing; otherwise it is
+one extra read for seat C (~12k tokens on a large Flutter repo, measured). `--no-reuse` turns it off for one
+run, `"reuse_check": false` in `.review-memory/config.json` for the repo (`--reuse` turns
+it back on). The catalog script ships for Dart/Flutter; other stacks get `reuse: skipped`.
 
 ### `/review-pr-stats`  ·  CLI: `review-stats`
 

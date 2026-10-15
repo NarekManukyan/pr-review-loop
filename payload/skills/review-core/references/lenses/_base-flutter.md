@@ -33,6 +33,37 @@ the sweep for the deep bugs; see personas.md "Reporting completeness").
   not localized → `LocaleKeys.*.tr()`; digits/currency via `NumberFormat` (never a
   hardcoded `$`). **P2** (P1 if the app ships multiple locales — this org: UAE/KSA/RU/EU).
 
+### Reuse before build (maps U11; C) [reuse] — a copy of existing code is a P1
+Panels drop this as "style" or "refactor for elegance", and whole features then ship
+with private copies of the design system (measured: an 8-PR stack reviewed over 6–16
+rounds each got 0 reuse findings and needed a cleanup refactor after merge). It is not
+style: a copy drifts, misses the original's fixes, and often misses behaviour (a
+hand-built search field has no clear/Cancel). On by default; `--no-reuse` or
+`"reuse_check": false` drops this section.
+- **The catalog is in your packet:** `reuse-catalog.md` lists what existed at the
+  merge-base — design-system widgets, app-wide widgets, core use cases, core
+  helpers/extensions and every feature use-case name. Read it with the packet.
+- **For every new class or top-level function the diff adds** — private widgets
+  (`class _X extends …Widget`), new `*UseCase`s, helpers, mappers, extensions — ask:
+  does the catalog, or another feature (grep its distinctive calls/keys), already do
+  this job? A new widget that re-builds an existing one (sheet frame vs a sheet-body
+  widget, button row vs a modal-actions widget, selectable row, disclosure row, search
+  field, calendar, stepper, expandable text, success header, page dots, test-id
+  wrapper), a use case that opens/does what an existing one does, or a mapping that
+  re-derives a core helper → **P1**, even when users see no difference today. Cite both
+  sides: the new code's `file:line` and the existing symbol's path, and name the call
+  that replaces it.
+- **Copies inside the PR count too:** the same widget/field/mapping written twice in two
+  of the PR's own features → **P1**; fix = one shared widget in the owning feature.
+- **The fix may touch shared code.** Using an existing design-system widget is never "a
+  shared-code change". Adding a small, generic option to it (a test-id or callback
+  parameter) is in scope. Only a *new* design-system widget, or a breaking change to
+  one, is a follow-up — then report the copy as P2 with the follow-up named.
+- **Not a finding:** a near-copy the existing widget genuinely cannot express (say what
+  is missing), a one-off layout built from tokens with no equivalent, or overlap with
+  code in another open PR.
+- One inline thread per instance (P1), not a digest line.
+
 ### Permissions & platform (maps U4/U12; B) — the mobile blind spot
 - Any gallery/camera/mic/storage/location access must **request the permission** and
   surface a **permission-specific** failure (a denied-permission CTA), not collapse

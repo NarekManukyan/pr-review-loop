@@ -111,6 +111,83 @@ class PacketsTest(unittest.TestCase):
                 self.assertLessEqual(os.path.getsize(os.path.join(self.out, f)), packets.CHUNK_BYTES + 2000)
 
 
+class ReuseTest(unittest.TestCase):
+    """--reuse: a catalog of existing code goes to seat C only when the diff adds code."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        d = cls.d = cls.tmp.name
+        sh(d, "git", "init", "-q")
+        sh(d, "git", "config", "user.email", "t@t")
+        sh(d, "git", "config", "user.name", "t")
+        files = {
+            "pubspec.yaml": "name: app\n",
+            "packages/ui/lib/src/app_choice_row.dart":
+                "/// A row the user picks from a list.\n"
+                "class AppChoiceRow extends StatelessWidget {}\n",
+            "lib/core/utils/string_utils.dart":
+                "/// Name, else username.\n"
+                "String displayNameOf({String? name, String? username}) => name ?? username ?? '';\n",
+            "lib/features/gifts/use_cases/open_buy_gift_use_case.dart": "class OpenBuyGiftUseCase {}\n",
+            "lib/features/shop/view/shop_page.dart": "class ShopPage {}\n",
+        }
+        for path, text in files.items():
+            os.makedirs(os.path.dirname(os.path.join(d, path)) or d, exist_ok=True)
+            with open(os.path.join(d, path), "w") as f:
+                f.write(text)
+        sh(d, "git", "add", ".")
+        sh(d, "git", "commit", "-q", "-m", "base")
+        cls.base = sh(d, "git", "rev-parse", "HEAD")
+        with open(os.path.join(d, "lib", "features", "shop", "view", "shop_page.dart"), "a") as f:
+            f.write("class _PickRow extends StatelessWidget {}\n")
+        sh(d, "git", "commit", "-qam", "adds a widget")
+        cls.adds = sh(d, "git", "rev-parse", "HEAD")
+        with open(os.path.join(d, "pubspec.yaml"), "a") as f:
+            f.write("version: 1.0.1\n")
+        sh(d, "git", "commit", "-qam", "no new symbol")
+        cls.no_adds = sh(d, "git", "rev-parse", "HEAD")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def build(self, head, *extra):
+        out = os.path.join(self.d, "_p_" + head[:7] + "_".join(extra))
+        packets.main(["--repo", self.d, "--base", self.base, "--head", head, "--out", out,
+                      "--pack", "lenses/_base-flutter.md", *extra])
+        return out, json.loads(read(os.path.join(out, "manifest.json")))
+
+    def test_on_by_default_catalog_goes_to_seat_c(self):
+        out, manifest = self.build(self.adds)
+        self.assertEqual(manifest["reuse"], "on")
+        catalog = read(os.path.join(out, "reuse-catalog.md"))
+        self.assertIn("`AppChoiceRow` — packages/ui/lib/src/app_choice_row.dart — A row the user picks", catalog)
+        self.assertIn("`displayNameOf()`", catalog)
+        self.assertIn("OpenBuyGiftUseCase", catalog)
+        c = read(os.path.join(out, "seat-C.md"))
+        self.assertIn("Reuse before build", c)
+        self.assertIn("reuse-catalog.md", c)
+        self.assertNotIn("Reuse before build", read(os.path.join(out, "seat-B.md")))
+
+    def test_no_reuse_drops_the_lens_and_the_catalog(self):
+        out, manifest = self.build(self.adds, "--reuse", "off")
+        self.assertEqual(manifest["reuse"], "off")
+        self.assertFalse(os.path.exists(os.path.join(out, "reuse-catalog.md")))
+        self.assertNotIn("Reuse before build", read(os.path.join(out, "seat-C.md")))
+
+    def test_merge_only_delta_is_skipped(self):
+        out = os.path.join(self.d, "_p_delta")
+        packets.main(["--repo", self.d, "--base", self.adds, "--head", self.no_adds, "--out", out,
+                      "--pack", "lenses/_base-flutter.md"])
+        manifest = json.loads(read(os.path.join(out, "manifest.json")))
+        self.assertEqual(manifest["reuse"], "skipped")
+        self.assertFalse(os.path.exists(os.path.join(out, "reuse-catalog.md")))
+        c = read(os.path.join(out, "seat-C.md"))
+        self.assertNotIn("Reuse before build", c)
+        self.assertNotIn("## Reuse catalog", c)
+
+
 class GateTest(unittest.TestCase):
     def test_flutter_analyzer_errors_become_p0_findings(self):
         out = textwrap.dedent("""\

@@ -28,7 +28,9 @@ not detection.
   with `file:line`. A P2 earns its own thread only when it is (a) a concrete correctness or
   security risk one notch short of P1, or (b) something the author must act on to unblock
   another finding. Style, layout, naming, duplication and doc-wording points are digest
-  items, not threads.
+  items, not threads — **except reuse** (when the run's reuse check is on): new code that
+  copies an existing design-system widget, core helper or feature use case, or the same
+  code written twice in the PR, is a P1 with its own thread (the pack's reuse lens).
 - **Cap: at most 10 P2 threads per round, and at most 25 inline threads in total.** Over
   the cap, keep the highest-value ones and digest the rest. When cutting, drop the ones you
   would not defend out loud in a standup.
@@ -179,6 +181,10 @@ Owns **U8** (stale docs), **U11** (complexity), plus the pack's perf rules. Cite
 `method + file:line + measured value vs threshold` for complexity. **Read the whole
 file** for the design-system/i18n/dead-code sweep and the **whole function** for
 complexity — see the reading table above.
+**Reuse is yours:** when your packet has a `reuse-catalog.md`, check every class and
+function the diff adds against it and against the other features (the pack's reuse
+lens). No catalog in the packet means the check is off or the diff adds nothing new —
+skip it.
 
 **Code hygiene is yours too, and it is the half panels drop.** "Readability" in practice
 gets reduced to complexity metrics and dead code. It also means:
