@@ -61,7 +61,7 @@ CONFIG_DEFAULTS = {
     'cycle_cap': 3,                    # max PRs a watch cycle handles
     'generated_globs': [],             # extra generated-file globs to skip (beyond CLAUDE.md)
     'review_pr_command': '/review-pr', # command the PR watcher drives
-    'seat_mode': 'packet',             # 'packet' (default) or 'fork' — see /review-pr --fork
+    'seat_mode': 'auto',               # 'auto' (default: packet on a PR's first review, fork after), 'packet' or 'fork' — see /review-pr --fork
     'reuse_check': True,               # reuse-before-build check — see /review-pr --no-reuse
 }
 
@@ -452,6 +452,26 @@ def cmd_was_reviewed(root, args):
     sys.exit(1)
 
 
+def cmd_seat_mode(root, args):
+    """Print the seat mode for this PR's review: 'packet' or 'fork'.
+
+    A --packet/--fork flag wins, then config seat_mode. 'auto' gives a PR's first
+    review packet mode (best recall) and every later review fork mode (~40% cheaper):
+    a re-review or merge-only re-check re-reads mostly code the first round covered.
+    """
+    if args.flag:
+        print(args.flag)
+        return
+    mode = load_config(root).get('seat_mode', 'auto')
+    if mode in ('packet', 'fork'):
+        print(mode)
+        return
+    want_pr = str(args.pr)
+    seen = any(e.get('kind') == 'review-run' and str(e.get('pr')) == want_pr
+               for e in load_decisions(root))
+    print('fork' if seen else 'packet')
+
+
 # --------------------------------------------------------------------------- #
 def cmd_distill(root, args):
     """Surface recurring signatures as candidate rules for HUMAN promotion."""
@@ -617,7 +637,7 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)
     for name in ('init', 'recall', 'record', 'note', 'close',
-                 'mark-reviewed', 'was-reviewed', 'config', 'health',
+                 'mark-reviewed', 'was-reviewed', 'seat-mode', 'config', 'health',
                  'distill', 'ripe', 'stats'):
         p = sub.add_parser(name)
         p.add_argument('root')
@@ -630,6 +650,10 @@ def main():
             if name == 'mark-reviewed':
                 p.add_argument('--round', type=int, default=1)
                 p.add_argument('--date', default='')
+        if name == 'seat-mode':
+            p.add_argument('--pr', required=True)
+            p.add_argument('--flag', default='', choices=['', 'packet', 'fork'],
+                           help='a --packet/--fork the run was given; wins over config')
         if name == 'recall':
             p.add_argument('--area', default='')
             p.add_argument('--max', type=int, default=12)
@@ -661,6 +685,7 @@ def main():
     {'init': cmd_init, 'recall': cmd_recall, 'record': cmd_record,
      'note': cmd_note, 'close': cmd_close,
      'mark-reviewed': cmd_mark_reviewed, 'was-reviewed': cmd_was_reviewed,
+     'seat-mode': cmd_seat_mode,
      'config': cmd_config, 'health': cmd_health,
      'distill': cmd_distill, 'ripe': cmd_ripe, 'stats': cmd_stats}[args.cmd](root, args)
 

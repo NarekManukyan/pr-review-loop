@@ -46,7 +46,7 @@ const startRun = async ($: EngineInterface, args: string) => {
   const now = await $.clock.now()
   const next: Run = {
     pr: args.match(PR_URL)?.[0] ?? (args.trim().split(/\s+/)[0] || 'local diff'),
-    mode: /--fork\b/.test(args) ? 'fork' : 'packet',
+    mode: /--fork\b/.test(args) ? 'fork' : /--packet\b/.test(args) ? 'packet' : 'auto',
     startedAt: now, costAtStart: await usd($), cost: 0,
     seats: [], build: null, denied: 0, isFinished: false,
   }
@@ -163,7 +163,9 @@ export const register: Register = on => {
         await startRun($, '')
         r = await read($, run)
       }
-      await update($, run, cur => (cur ? { ...cur, seats: [...cur.seats, s] } : cur))
+      // the first seat shows the mode the review really ran in (auto resolves per PR)
+      const mode = e.subagentType === 'fork' ? 'fork' : 'packet'
+      await update($, run, cur => (cur ? { ...cur, mode: cur.seats.length ? cur.mode : mode, seats: [...cur.seats, s] } : cur))
       ensureTicker($)
     }
     return res

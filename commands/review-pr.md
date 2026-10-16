@@ -1,6 +1,6 @@
 ---
 description: Assemble a stack-aware reviewer panel (Architecture · Correctness · Perf/Quality · Build&Analyze) and post a structured PR review with inline comments, an overview, and a fix prompt
-argument-hint: <PR_URL> [--fork] [--no-reuse]
+argument-hint: <PR_URL> [--fork|--packet] [--no-reuse]
 ---
 
 You are orchestrating a code-review panel. The **review brain lives in the shared
@@ -39,12 +39,19 @@ on the same two PRs) at the same quality.
 
 | Flag | Seat mode | When |
 |---|---|---|
-| *(none)* | **packet** — each seat is a `review-panel` agent that reads the packet itself | default: the best results per run in the benchmark |
-| `--fork` | **fork** — you read the packet once, seats are forks of you | ~40% cheaper and faster; slightly lower recall in the benchmark (6 vs 8–9 of 14 bugs over 2 PRs) — use it for routine PRs, re-reviews and two-pass runs |
+| *(none)* | **auto** — packet on the PR's first review, fork on every later one | default. Round 1 gets the best recall; a re-review or merge-only re-check re-reads mostly code round 1 already covered, so it gets the cheap mode |
+| `--packet` | **packet** — each seat is a `review-panel` agent that reads the packet itself | the best results per run in the benchmark; force it for a re-review that needs full recall (a big rewrite) |
+| `--fork` | **fork** — you read the packet once, seats are forks of you | ~40% cheaper and faster; slightly lower recall in the benchmark (6 vs 8–9 of 14 bugs over 2 PRs) — force it for a cheap first pass on a routine PR |
 
-A repo can make fork its default with `"seat_mode": "fork"` in
-`.review-memory/config.json`; `--packet` forces the default back for one run. Print the
-mode in the resolver line (`… · seats: packet|fork`).
+Resolve the mode once, before step 5:
+```bash
+python3 ~/.claude/skills/review-memory/scripts/memory.py seat-mode . --pr <N> [--flag packet|fork]
+```
+It prints `packet` or `fork`: a flag wins, then `seat_mode` in `.review-memory/config.json`
+(`auto` default, or `packet`/`fork` to pin one), and `auto` prints `fork` once review memory
+holds a review run for this PR. If it prints `packet` but step 4 found an earlier panel
+review on the PR (memory was wiped or is new), use `fork`. Print the mode in the resolver
+line (`… · seats: packet|fork`).
 
 | Flag | Reuse check | When |
 |---|---|---|
@@ -206,14 +213,14 @@ resolver line (`… · reuse: on|off|skipped`, the `reuse` value from the packet
    key or PR-description ACs — pass it the ACs), as several Agent calls in ONE message.
    How depends on the seat mode (see **Flags**).
 
-   **Packet mode (default)** — spawn each seat with `subagent_type: 'review-panel'`; it
+   **Packet mode** — spawn each seat with `subagent_type: 'review-panel'`; it
    reads the packet itself. The prompt is short — the packet carries the material:
    > You are Reviewer `<X>`. In your first turn, Read every `<scratch>/packets/common-*.md`
    > file and `<scratch>/packets/seat-<X>.md` — all in that one turn, as parallel Read
    > calls. Follow the packet's cost rule (≤ 2 more turns of batched reads, ≤ 15 tool
    > calls). `.review-memory` recall: `<recall lines>`. Return findings JSON.
 
-   **Fork mode (`--fork`, or `seat_mode: fork`)** — needs the Agent tool to accept
+   **Fork mode** — needs the Agent tool to accept
    `subagent_type: 'fork'` (Claude Code with `CLAUDE_CODE_FORK_SUBAGENT=1`). If it does
    not, say so in one line and use packet mode — never fail the review over it. Read
    every `<scratch>/packets/common-*.md` yourself, in one turn of parallel Reads, and read
