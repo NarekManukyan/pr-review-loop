@@ -197,14 +197,17 @@ that's the whole point of the split. Packs shipped today: `go-postgres`, `flutte
 
 ## Commands
 
-### `/review-pr <PR_URL> [--fork] [--no-reuse]`
+### `/review-pr <PR_URL> [--fork|--packet] [--no-reuse]`
 Full panel review of one PR, posting inline comments. Detects the review round from
 existing PR comments, recalls memory, records outcomes. This is the command a human
 runs manually and the one the PR watcher drives.
 
 **Seat modes.** Every seat gets a context packet built in code (changed files, rules,
 likely reads, its own lenses) instead of fetching material turn by turn.
-- **packet** (default): each seat reads the packet itself. On a two-PR benchmark it
+- **auto** (default): packet mode on a PR's first review, fork mode on every later one
+  (re-reviews and merge-only re-checks), decided from review memory by
+  `memory.py seat-mode`. Round 1 keeps full recall; later rounds cost about 40% less.
+- **`--packet`**: each seat reads the packet itself. On a two-PR benchmark it
   matched the old panel's results with less than half the tokens and in about half the
   time.
 - **`--fork`**: you read the packet once and the seats are forks of the orchestrator, so
@@ -213,8 +216,8 @@ likely reads, its own lenses) instead of fetching material turn by turn.
   on an important PR. Needs `CLAUDE_CODE_FORK_SUBAGENT=1`; without it the review says so
   and runs in packet mode.
 
-Make fork a repo's default with `"seat_mode": "fork"` in `.review-memory/config.json`
-(`--packet` overrides it for one run).
+Pin one mode for a repo with `"seat_mode": "packet"` or `"fork"` in
+`.review-memory/config.json` (default `"auto"`); a flag overrides it for one run.
 
 **Reuse check** (on by default). Reviewer C gets `reuse-catalog.md`, a list of what the
 repo already has at the merge-base (design-system widgets, app-wide widgets, core use
@@ -292,7 +295,7 @@ Wrap the watch command in `/loop`:
 
 ```
 /loop 10m /review-pr-watch                       # inline, PRs you're requested on
-/loop 10m /review-pr-watch --fork                # same, cheaper fork-mode seats
+/loop 10m /review-pr-watch --fork                # same, fork-mode seats on every round
 ```
 
 **How a next round is detected**

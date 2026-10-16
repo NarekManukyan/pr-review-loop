@@ -3,6 +3,26 @@
 All notable changes to pr-review-loop. Teammates: after a maintainer pushes, run
 `/plugin marketplace update pr-review-loop` then reinstall to get the latest.
 
+## 1.21.0
+
+Changed
+- **Seat mode is `auto` by default: packet on a PR's first review, fork on every later
+  one.** Packet mode makes each of the four seats read and cache the whole common packet
+  on its own (measured on a 32-file Flutter PR: about 52k tokens, read four times). A
+  re-review or merge-only re-check re-reads mostly code round 1 already covered, so it
+  now runs in fork mode (about 40% cheaper in the benchmark), while round 1 keeps packet
+  mode's better recall.
+  - New `memory.py seat-mode <root> --pr N [--flag packet|fork]` prints the mode: a flag
+    wins, then `seat_mode` in `.review-memory/config.json` (`auto`, `packet` or `fork`),
+    and `auto` prints `fork` once review memory holds a review run for the PR.
+  - `/review-pr` takes `--packet` as well as `--fork` to force one mode for a run, and
+    uses fork when step 4 finds an earlier panel review even if memory is empty.
+  - `/review-pr-watch` passes a flag through only when it was started with one.
+  - The review board shows the mode the seats really ran in (`auto` until the first seat
+    starts).
+  - Checked: a `general-purpose` agent can spawn `fork` seats (with
+    `CLAUDE_CODE_FORK_SUBAGENT=1`), so an orchestrator agent gets the saving too.
+
 ## 1.20.0
 
 Added

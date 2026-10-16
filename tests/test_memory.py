@@ -151,5 +151,35 @@ class TestMakeRelevant(unittest.TestCase):
                          "'view' must discriminate when the corpus says it's rare")
 
 
+class TestSeatMode(unittest.TestCase):
+    """auto: packet on a PR's first review, fork once memory holds a review run for it."""
+
+    def run_cli(self, root, *args):
+        import subprocess
+        out = subprocess.run([sys.executable, os.path.join(_SCRIPTS, 'memory.py'), *args],
+                             capture_output=True, text=True, check=True)
+        return out.stdout.strip().splitlines()[-1]
+
+    def test_auto_first_review_packet_then_fork(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            self.assertEqual(self.run_cli(root, 'seat-mode', root, '--pr', '7'), 'packet')
+            self.run_cli(root, 'mark-reviewed', root, '--pr', '7', '--commit', 'a' * 40)
+            self.assertEqual(self.run_cli(root, 'seat-mode', root, '--pr', '7'), 'fork')
+            # another PR is still on its first review
+            self.assertEqual(self.run_cli(root, 'seat-mode', root, '--pr', '8'), 'packet')
+
+    def test_flag_wins_then_config(self):
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            self.run_cli(root, 'mark-reviewed', root, '--pr', '7', '--commit', 'a' * 40)
+            self.assertEqual(self.run_cli(root, 'seat-mode', root, '--pr', '7', '--flag', 'packet'), 'packet')
+            with open(os.path.join(root, '.review-memory', 'config.json'), 'w') as f:
+                json.dump({'seat_mode': 'packet'}, f)
+            self.assertEqual(self.run_cli(root, 'seat-mode', root, '--pr', '7'), 'packet')
+            self.assertEqual(self.run_cli(root, 'seat-mode', root, '--pr', '9', '--flag', 'fork'), 'fork')
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -28,7 +28,7 @@ export type Build = {
 
 export type Run = {
   pr: string
-  mode: 'packet' | 'fork'
+  mode: 'auto' | 'packet' | 'fork'
   startedAt: number
   costAtStart: number
   cost: number
@@ -41,7 +41,7 @@ export type Run = {
 
 export type RunSummary = {
   pr: string
-  mode: 'packet' | 'fork'
+  mode: 'auto' | 'packet' | 'fork'
   minutes: number
   cost: number
   findings: number
